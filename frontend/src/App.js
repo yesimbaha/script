@@ -371,9 +371,9 @@ function App() {
                     onChange={(e) => setSettings(prev => ({ ...prev, preferred_map: e.target.value }))}
                     className="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
                   >
+                    <option value="world">World Map</option>
                     <option value="practice">Practice Map</option>
                     <option value="tournament">Tournament Map</option>
-                    <option value="any">Any Available Map</option>
                   </select>
                   <div className="text-xs text-gray-400 mt-1">
                     Bot will prefer this map type when entering the game
