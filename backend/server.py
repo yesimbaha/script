@@ -536,157 +536,174 @@ class TankpitBot:
                 logging.error("No page available for fuel detection")
                 return 50
                 
-            # Strategy 1: Look for fuel-related text or elements in the DOM
-            fuel_selectors = [
-                # Common fuel indicators
-                '*[class*="fuel"]',
-                '*[id*="fuel"]', 
-                '*[class*="energy"]',
-                '*[id*="energy"]',
-                '*[class*="health"]',
-                '*[id*="health"]',
-                # Text-based searching
-                '*:has-text("Fuel")',
-                '*:has-text("Energy")',
-                '*:has-text("%")',
-                # Progress bars or gauges
-                'progress',
-                '.progress',
-                '.gauge',
-                '.bar',
-                '.meter'
-            ]
-            
-            detected_fuel = None
-            
-            for selector in fuel_selectors:
-                try:
-                    elements = await self.page.query_selector_all(selector)
-                    for element in elements:
-                        if not await element.is_visible():
-                            continue
-                            
-                        # Get text content
-                        text = await element.inner_text()
-                        
-                        # Look for percentage values
-                        import re
-                        percentage_matches = re.findall(r'(\d+)%', text)
-                        if percentage_matches:
-                            fuel_value = int(percentage_matches[0])
-                            if 0 <= fuel_value <= 100:  # Valid percentage
-                                logging.info(f"Found fuel level {fuel_value}% using selector: {selector}")
-                                detected_fuel = fuel_value
-                                break
-                        
-                        # Look for fuel-related numbers (like "Fuel: 75" or "75/100")
-                        fuel_matches = re.findall(r'(?:fuel|energy|health)[:=\s]*(\d+)', text.lower())
-                        if fuel_matches:
-                            fuel_value = int(fuel_matches[0])
-                            # Convert to percentage if it seems to be out of 100
-                            if fuel_value > 100:
-                                fuel_value = min(100, fuel_value // 10)  # Assume it's out of 1000
-                            logging.info(f"Found fuel value {fuel_value}% from text: {text}")
-                            detected_fuel = fuel_value
-                            break
-                        
-                        # Check for progress bar attributes
-                        value_attr = await element.get_attribute('value')
-                        max_attr = await element.get_attribute('max')
-                        if value_attr and max_attr:
-                            try:
-                                value = float(value_attr)
-                                max_val = float(max_attr)
-                                fuel_percentage = int((value / max_val) * 100)
-                                logging.info(f"Found fuel level {fuel_percentage}% from progress bar")
-                                detected_fuel = fuel_percentage
-                                break
-                            except:
-                                pass
+            # Strategy 1: Look for the fuel/HP bar in the bottom UI panel (based on screenshot)
+            try:
+                # The fuel bar appears to be in the bottom UI area, let's look for progress bars there
+                fuel_bar_selectors = [
+                    # Look for progress bars, bars, or similar elements
+                    'div[style*="width"][style*="%"]',  # Divs with width percentages
+                    '.bar', '.progress', '.fuel', '.health', '.hp',
+                    'div[class*="bar"]', 'div[class*="fuel"]', 'div[class*="health"]',
+                    # Canvas elements that might contain the bar
+                    'canvas'
+                ]
+                
+                for selector in fuel_bar_selectors:
+                    try:
+                        elements = await self.page.query_selector_all(selector)
+                        for element in elements:
+                            if not await element.is_visible():
+                                continue
                                 
-                except Exception as e:
-                    continue
-                    
-                if detected_fuel is not None:
-                    break
+                            # Check if element is in the bottom portion of the screen
+                            bounding_box = await element.bounding_box()
+                            if bounding_box:
+                                viewport_height = self.page.viewport_size["height"]
+                                # Only consider elements in the bottom 30% of the screen
+                                if bounding_box["y"] < viewport_height * 0.7:
+                                    continue
+                                    
+                                # Check for width-based percentage (common for fuel bars)
+                                style = await element.get_attribute('style')
+                                if style and 'width:' in style:
+                                    width_match = re.search(r'width:\s*(\d+)%', style)
+                                    if width_match:
+                                        fuel_percentage = int(width_match.group(1))
+                                        if 0 <= fuel_percentage <= 100:
+                                            logging.info(f"Found fuel level {fuel_percentage}% from element style: {style}")
+                                            return fuel_percentage
+                                            
+                    except Exception as e:
+                        continue
+            except Exception as e:
+                logging.error(f"Error in Strategy 1 fuel detection: {e}")
             
-            # Strategy 2: Look in page content for fuel information
-            if detected_fuel is None:
-                try:
-                    page_content = await self.page.content()
+            # Strategy 2: Take screenshot and analyze the fuel bar area visually
+            try:
+                # Take screenshot
+                screenshot = await self.page.screenshot()
+                
+                # Convert to OpenCV format
+                nparr = np.frombuffer(screenshot, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                if img is None:
+                    raise Exception("Failed to decode screenshot")
+                
+                # Get image dimensions
+                height, width = img.shape[:2]
+                
+                # Focus on the bottom UI area where the fuel bar is located (bottom 25% of screen)
+                bottom_ui_start = int(height * 0.75)
+                ui_area = img[bottom_ui_start:height, :]
+                
+                # Convert to HSV for better color detection
+                hsv = cv2.cvtColor(ui_area, cv2.COLOR_BGR2HSV)
+                
+                # Look for blue color (fuel bar) - adjust ranges based on the bar color
+                blue_lower = np.array([100, 50, 50])
+                blue_upper = np.array([130, 255, 255])
+                blue_mask = cv2.inRange(hsv, blue_lower, blue_upper)
+                
+                # Look for red color (health/damage indicator)
+                red_lower1 = np.array([0, 50, 50])
+                red_upper1 = np.array([10, 255, 255])
+                red_lower2 = np.array([170, 50, 50])
+                red_upper2 = np.array([180, 255, 255])
+                red_mask1 = cv2.inRange(hsv, red_lower1, red_upper1)
+                red_mask2 = cv2.inRange(hsv, red_lower2, red_upper2)
+                red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+                
+                # Calculate fuel percentage based on blue vs red ratio
+                blue_pixels = cv2.countNonZero(blue_mask)
+                red_pixels = cv2.countNonZero(red_mask)
+                total_bar_pixels = blue_pixels + red_pixels
+                
+                if total_bar_pixels > 100:  # Ensure we found a significant bar
+                    fuel_percentage = int((blue_pixels / total_bar_pixels) * 100)
+                    logging.info(f"Detected fuel level {fuel_percentage}% via color analysis (blue: {blue_pixels}, red: {red_pixels})")
+                    return fuel_percentage
                     
-                    # Look for fuel percentage in the HTML
-                    fuel_patterns = [
-                        r'fuel["\s:]*(\d+)%',
-                        r'energy["\s:]*(\d+)%', 
-                        r'health["\s:]*(\d+)%',
-                        r'(\d+)%["\s]*fuel',
-                        r'(\d+)%["\s]*energy',
-                        r'fuel["\s:=]*(\d+)["\s/]*100',
-                        r'energy["\s:=]*(\d+)["\s/]*100'
-                    ]
-                    
-                    for pattern in fuel_patterns:
-                        matches = re.findall(pattern, page_content, re.IGNORECASE)
-                        if matches:
-                            fuel_value = int(matches[0])
-                            if 0 <= fuel_value <= 100:
-                                logging.info(f"Found fuel level {fuel_value}% in page content")
-                                detected_fuel = fuel_value
-                                break
+            except Exception as e:
+                logging.error(f"Error in visual fuel detection: {e}")
+            
+            # Strategy 3: Look for numerical fuel indicators in the UI
+            try:
+                # Look for text elements that might show fuel numbers
+                page_content = await self.page.content()
+                
+                # Search for fuel-related patterns in the HTML
+                fuel_patterns = [
+                    r'fuel["\s:]*(\d+)',
+                    r'hp["\s:]*(\d+)', 
+                    r'health["\s:]*(\d+)',
+                    r'energy["\s:]*(\d+)',
+                    # Look for numbers that might be percentages
+                    r'(\d+)%',
+                    # Look for fractions like "75/100"
+                    r'(\d+)/100'
+                ]
+                
+                for pattern in fuel_patterns:
+                    matches = re.findall(pattern, page_content, re.IGNORECASE)
+                    for match in matches:
+                        fuel_value = int(match)
+                        if 0 <= fuel_value <= 100:
+                            logging.info(f"Found potential fuel level {fuel_value}% in page content")
+                            return fuel_value
+                        elif fuel_value > 100:
+                            # Might be out of a larger number, convert to percentage
+                            normalized = min(100, fuel_value // 10)
+                            if normalized > 0:
+                                logging.info(f"Normalized fuel level to {normalized}% from value {fuel_value}")
+                                return normalized
                                 
-                except Exception as e:
-                    logging.error(f"Error searching page content for fuel: {e}")
+            except Exception as e:
+                logging.error(f"Error in text-based fuel detection: {e}")
             
-            # Strategy 3: Look for JavaScript variables or game state
-            if detected_fuel is None:
-                try:
-                    # Try to execute JavaScript to get game state
-                    fuel_js_checks = [
-                        "window.game && window.game.fuel",
-                        "window.player && window.player.fuel", 
-                        "window.tank && window.tank.fuel",
-                        "window.gameState && window.gameState.fuel",
-                        "document.querySelector('[class*=\"fuel\"]') && document.querySelector('[class*=\"fuel\"]').textContent",
-                        "document.querySelector('[id*=\"fuel\"]') && document.querySelector('[id*=\"fuel\"]').textContent"
-                    ]
-                    
-                    for js_check in fuel_js_checks:
-                        try:
-                            result = await self.page.evaluate(js_check)
-                            if result:
-                                # Try to extract number from result
-                                if isinstance(result, (int, float)):
-                                    if 0 <= result <= 100:
-                                        detected_fuel = int(result)
-                                        logging.info(f"Found fuel level {detected_fuel}% via JavaScript: {js_check}")
-                                        break
-                                elif isinstance(result, str):
-                                    numbers = re.findall(r'(\d+)', result)
-                                    if numbers:
-                                        fuel_val = int(numbers[0])
-                                        if 0 <= fuel_val <= 100:
-                                            detected_fuel = fuel_val
-                                            logging.info(f"Found fuel level {detected_fuel}% from JS result: {result}")
-                                            break
-                        except:
-                            continue
-                            
-                except Exception as e:
-                    logging.error(f"Error checking JavaScript for fuel: {e}")
+            # Strategy 4: Try JavaScript evaluation for game state
+            try:
+                js_fuel_checks = [
+                    # Common game state variables
+                    "window.gameState && window.gameState.player && window.gameState.player.fuel",
+                    "window.player && window.player.health",
+                    "window.tank && window.tank.fuel", 
+                    "window.game && window.game.fuel",
+                    # Try to find elements with fuel-related IDs/classes
+                    "document.querySelector('[id*=\"fuel\"], [class*=\"fuel\"], [id*=\"health\"], [class*=\"health\"]') && document.querySelector('[id*=\"fuel\"], [class*=\"fuel\"], [id*=\"health\"], [class*=\"health\"]').textContent"
+                ]
+                
+                for js_check in js_fuel_checks:
+                    try:
+                        result = await self.page.evaluate(js_check)
+                        if result:
+                            if isinstance(result, (int, float)) and 0 <= result <= 100:
+                                logging.info(f"Found fuel level {int(result)}% via JavaScript")
+                                return int(result)
+                            elif isinstance(result, str):
+                                numbers = re.findall(r'(\d+)', result)
+                                if numbers:
+                                    fuel_val = int(numbers[0])
+                                    if 0 <= fuel_val <= 100:
+                                        logging.info(f"Extracted fuel level {fuel_val}% from JS result")
+                                        return fuel_val
+                    except:
+                        continue
+                        
+            except Exception as e:
+                logging.error(f"Error in JavaScript fuel detection: {e}")
             
-            # If still no fuel detected, take screenshot for debugging
-            if detected_fuel is None:
-                await self.page.screenshot(path="/tmp/tankpit_fuel_debug.png")
-                logging.warning("Could not detect fuel level, screenshot saved for debugging")
-                # Return last known fuel or reasonable default
-                return bot_state.get("current_fuel", 75)
+            # If no fuel detected, save debug screenshot and return a reasonable default
+            await self.page.screenshot(path="/tmp/tankpit_fuel_debug_detailed.png")
+            logging.warning("Could not detect fuel level with any method, using default value")
             
-            return detected_fuel
+            # Return a reasonable default or last known value
+            last_fuel = bot_state.get("current_fuel", 75)
+            return max(25, last_fuel)  # Ensure minimum 25% to prevent constant shield activation
             
         except Exception as e:
             logging.error(f"Failed to detect fuel level: {e}")
-            return bot_state.get("current_fuel", 50)  # Return last known or default
+            return 75  # Safe default
     
     async def get_available_maps(self):
         """Get list of available maps/game modes"""
