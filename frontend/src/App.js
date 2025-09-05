@@ -364,6 +364,21 @@ function App() {
                     className="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Preferred Map Type</label>
+                  <select
+                    value={settings.preferred_map}
+                    onChange={(e) => setSettings(prev => ({ ...prev, preferred_map: e.target.value }))}
+                    className="w-full p-3 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="practice">Practice Map</option>
+                    <option value="tournament">Tournament Map</option>
+                    <option value="any">Any Available Map</option>
+                  </select>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Bot will prefer this map type when entering the game
+                  </div>
+                </div>
                 <button
                   onClick={handleSettingsUpdate}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded transition-colors"
