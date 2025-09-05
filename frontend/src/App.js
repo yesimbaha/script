@@ -123,6 +123,13 @@ function App() {
         setIsLoggedIn(true);
         addLog('Successfully logged into tankpit.com');
         
+        // Fetch available tanks
+        const tanksResponse = await axios.get(`${API}/bot/tanks`);
+        if (tanksResponse.data.success) {
+          setAvailableTanks(tanksResponse.data.tanks);
+          addLog(`Found ${tanksResponse.data.tanks.length} tanks`);
+        }
+        
         // Fetch available maps
         const mapsResponse = await axios.get(`${API}/bot/maps`);
         if (mapsResponse.data.success) {
