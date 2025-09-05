@@ -91,7 +91,23 @@ class TankpitBot:
     async def start_browser(self):
         """Initialize browser and navigate to tankpit.com"""
         playwright = await async_playwright().__aenter__()
-        self.browser = await playwright.chromium.launch(headless=False, args=['--no-sandbox'])
+        
+        # Launch browser in headless mode for container environment
+        # But user requested visible browser, so we'll use xvfb for virtual display
+        try:
+            # Try to launch with visible browser first
+            self.browser = await playwright.chromium.launch(
+                headless=False, 
+                args=['--no-sandbox', '--disable-dev-shm-usage']
+            )
+        except Exception as e:
+            logging.warning(f"Failed to launch visible browser: {e}. Switching to headless mode.")
+            # Fallback to headless mode
+            self.browser = await playwright.chromium.launch(
+                headless=True, 
+                args=['--no-sandbox', '--disable-dev-shm-usage']
+            )
+            
         self.page = await self.browser.new_page()
         
         # Navigate to tankpit.com
