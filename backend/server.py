@@ -506,10 +506,7 @@ class TankpitBot:
         bot_state["running"] = False
         bot_state["status"] = "stopped"
         
-        if self.page:
-            await self.page.close()
-        if self.browser:
-            await self.browser.close()
+        await self.cleanup_browser()
 
 # Global bot instance
 tankpit_bot = TankpitBot()
