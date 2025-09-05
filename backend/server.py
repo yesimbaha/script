@@ -90,23 +90,13 @@ class TankpitBot:
         
     async def start_browser(self):
         """Initialize browser and navigate to tankpit.com"""
-        # Check if browser is already running
-        if self.browser:
-            try:
-                # Test if browser is still alive by checking its state
-                await self.browser.new_page()  # This will fail if browser is closed
-                await self.browser.contexts[0].pages[-1].close()  # Close the test page
-                logging.info("Browser already running, reusing existing instance")
-                return True
-            except:
-                # Browser is closed or invalid, continue to create new one
-                self.browser = None
-                self.page = None
+        # Always clean up any existing browser first to avoid stale sessions
+        await self.cleanup_browser()
             
         try:
             playwright = await async_playwright().__aenter__()
             
-            # Launch browser with virtual display for container environment
+            # Launch fresh browser instance
             self.browser = await playwright.chromium.launch(
                 headless=False,
                 args=[
@@ -124,7 +114,15 @@ class TankpitBot:
             await self.page.goto("https://www.tankpit.com", timeout=15000)
             await self.page.wait_for_load_state("networkidle", timeout=15000)
             
-            logging.info("Successfully navigated to tankpit.com")
+            # Verify we're on the right page
+            page_title = await self.page.title()
+            current_url = self.page.url
+            
+            if "tankpit" not in page_title.lower() and "tankpit" not in current_url.lower():
+                logging.error(f"Not on tankpit.com - Title: {page_title}, URL: {current_url}")
+                return False
+            
+            logging.info(f"Successfully navigated to tankpit.com - Title: {page_title}")
             return True
             
         except Exception as e:
