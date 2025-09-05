@@ -1089,6 +1089,7 @@ async def get_bot_status():
         "shields_active": bot_state["shields_active"],
         "position": bot_state["position"],
         "status": bot_state["status"],
+        "current_map": bot_state.get("current_map", "none"),
         "settings": bot_state["settings"]
     }
 
