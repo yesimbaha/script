@@ -948,7 +948,16 @@ async def get_maps():
     """Get available maps"""
     try:
         maps = await tankpit_bot.get_available_maps()
-        return {"success": True, "maps": maps}
+        # Convert maps to serializable format
+        serializable_maps = []
+        for map_info in maps:
+            serializable_maps.append({
+                "name": map_info["name"],
+                "type": map_info["type"],
+                "href": map_info["href"],
+                "data_map": map_info["data_map"]
+            })
+        return {"success": True, "maps": serializable_maps}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
