@@ -269,22 +269,121 @@ class TankpitBot:
     async def get_available_tanks(self):
         """Get list of tanks available on the account"""
         try:
-            # This would need to be customized based on tankpit's actual interface
+            if not self.page:
+                logging.error("No page available for tank detection")
+                return []
+                
+            # Take a screenshot for debugging
+            await self.page.screenshot(path="/tmp/tankpit_after_login.png")
+            logging.info("Screenshot saved to /tmp/tankpit_after_login.png")
+            
+            # Get current page info
+            current_url = self.page.url
+            page_title = await self.page.title()
+            logging.info(f"Current URL: {current_url}")
+            logging.info(f"Page title: {page_title}")
+            
+            # Get page content to analyze
+            page_content = await self.page.content()
+            
+            # Look for common tank-related keywords in the HTML
+            if "tank" in page_content.lower():
+                logging.info("Found 'tank' references in page content")
+            else:
+                logging.warning("No 'tank' references found in page content")
+            
+            # Try multiple strategies to find tanks
             tanks = []
             
-            # Look for tank selection elements
-            tank_elements = await self.page.query_selector_all(".tank-list .tank, .tank-selection .tank")
+            # Strategy 1: Look for tank selection elements (original approach)
+            tank_elements = await self.page.query_selector_all(".tank-list .tank, .tank-selection .tank, .tank")
+            logging.info(f"Strategy 1 - Found {len(tank_elements)} elements with tank classes")
             
-            for i, tank_element in enumerate(tank_elements):
-                name = await tank_element.inner_text()
-                tanks.append({
-                    "name": name.strip(),
-                    "id": str(i),
-                    "fuel": 100,  # Default values
-                    "position": {"x": 0, "y": 0}
-                })
+            # Strategy 2: Look for links or buttons that might lead to tank selection
+            tank_links = await self.page.query_selector_all('a[href*="tank"], button:has-text("tank"), a:has-text("tank")')
+            logging.info(f"Strategy 2 - Found {len(tank_links)} tank-related links/buttons")
             
+            # Strategy 3: Look for game-related navigation elements
+            game_elements = await self.page.query_selector_all('a[href*="play"], a[href*="game"], button:has-text("Play"), button:has-text("Game")')
+            logging.info(f"Strategy 3 - Found {len(game_elements)} game-related elements")
+            
+            # Strategy 4: Look for any dropdown or selection elements
+            select_elements = await self.page.query_selector_all('select, .dropdown, .selection')
+            logging.info(f"Strategy 4 - Found {len(select_elements)} selection elements")
+            
+            # If we found tank elements, process them
+            if tank_elements:
+                for i, tank_element in enumerate(tank_elements):
+                    try:
+                        name = await tank_element.inner_text()
+                        tanks.append({
+                            "name": name.strip(),
+                            "id": str(i),
+                            "fuel": 100,  # Default values
+                            "position": {"x": 0, "y": 0}
+                        })
+                    except Exception as e:
+                        logging.error(f"Error processing tank element {i}: {e}")
+            
+            # If no tanks found with direct approach, try to navigate to tank selection
+            if not tanks and game_elements:
+                logging.info("No tanks found directly, trying to navigate to game area")
+                try:
+                    # Click on a "Play" or "Game" link
+                    await game_elements[0].click()
+                    await self.page.wait_for_load_state("networkidle", timeout=10000)
+                    
+                    # Try to find tanks again after navigation
+                    tank_elements = await self.page.query_selector_all(".tank-list .tank, .tank-selection .tank, .tank")
+                    logging.info(f"After navigation - Found {len(tank_elements)} tank elements")
+                    
+                    for i, tank_element in enumerate(tank_elements):
+                        try:
+                            name = await tank_element.inner_text()
+                            tanks.append({
+                                "name": name.strip(),
+                                "id": str(i),
+                                "fuel": 100,
+                                "position": {"x": 0, "y": 0}
+                            })
+                        except Exception as e:
+                            logging.error(f"Error processing tank element {i} after navigation: {e}")
+                            
+                except Exception as e:
+                    logging.error(f"Failed to navigate to game area: {e}")
+            
+            # If still no tanks, look for any text that might indicate tank names
+            if not tanks:
+                logging.info("Still no tanks found, looking for any tank-related text on page")
+                
+                # Look for any text elements that might contain tank information
+                all_elements = await self.page.query_selector_all('*')
+                tank_indicators = []
+                
+                for element in all_elements[:50]:  # Limit to first 50 elements to avoid timeout
+                    try:
+                        text = await element.inner_text()
+                        if text and any(keyword in text.lower() for keyword in ['tank', 'vehicle', 'unit', 'character']):
+                            tank_indicators.append(text.strip()[:100])  # Limit text length
+                    except:
+                        continue
+                
+                if tank_indicators:
+                    logging.info(f"Found potential tank indicators: {tank_indicators[:5]}")  # Log first 5
+                    
+                    # Create mock tanks based on found indicators (for testing)
+                    for i, indicator in enumerate(tank_indicators[:3]):  # Max 3 tanks
+                        if len(indicator) > 3:  # Skip very short text
+                            tanks.append({
+                                "name": f"Tank-{i+1}: {indicator[:20]}",
+                                "id": str(i),
+                                "fuel": 100,
+                                "position": {"x": 0, "y": 0}
+                            })
+            
+            logging.info(f"Final tank count: {len(tanks)}")
             return tanks
+            
         except Exception as e:
             logging.error(f"Failed to get tanks: {e}")
             return []
