@@ -725,6 +725,16 @@ class TankpitBot:
     
     async def run_bot_cycle(self):
         """Main bot logic cycle"""
+        # First, make sure we're in the game
+        if not await self.enter_game():
+            logging.error("Failed to enter game, stopping bot")
+            bot_state["status"] = "failed_to_enter_game"
+            self.running = False
+            return
+            
+        bot_state["status"] = "entered_game"
+        logging.info("Bot successfully entered the game")
+        
         while self.running:
             try:
                 # Update fuel level
