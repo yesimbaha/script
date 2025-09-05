@@ -40,7 +40,7 @@ bot_state = {
     "current_fuel": 0,
     "shields_active": False,
     "position": {"x": 0, "y": 0},
-    "status": "idle",
+    "current_map": "none",
     "settings": {
         "refuel_threshold": 25,
         "shield_threshold": 10,
