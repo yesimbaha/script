@@ -720,74 +720,64 @@ class TankpitBot:
                 logging.error("Failed to navigate to any map")
                 return False
             
-            # Step 2: Now we should be on a map page, look for actual game entry
+            # Step 2: Now we should be on a map page, click the middle to enter game
             await self.page.wait_for_timeout(3000)  # Wait for page to load
             
             current_url = self.page.url
             logging.info(f"Now on map page: {current_url}")
             
-            # Look for actual game join/enter buttons
-            game_join_selectors = [
-                'button:has-text("Join")',
-                'button:has-text("Enter")',
-                'button:has-text("Start")',
-                'button:has-text("Play Now")',
-                'a:has-text("Join")',
-                'a:has-text("Enter")',
-                'a:has-text("Start")',
-                '.join-button',
-                '.enter-button', 
-                '.play-button',
-                '[data-action="join"]',
-                '[data-action="enter"]',
-                'input[type="submit"][value*="Join"]',
-                'input[type="submit"][value*="Enter"]',
-                'input[type="submit"][value*="Play"]'
-            ]
-            
-            game_joined = False
-            
-            for selector in game_join_selectors:
-                try:
-                    elements = await self.page.query_selector_all(selector)
-                    for element in elements:
-                        if await element.is_visible():
-                            button_text = await element.inner_text()
-                            logging.info(f"Found potential game join button: '{button_text}' with selector: {selector}")
-                            
-                            await element.click()
-                            await self.page.wait_for_load_state("networkidle", timeout=15000)
-                            
-                            # Check if we actually entered a game
-                            new_url = self.page.url
-                            page_content = await self.page.content()
-                            
-                            # Look for game interface indicators
-                            if (new_url != current_url or 
-                                any(keyword in page_content.lower() for keyword in [
-                                    'fuel', 'health', 'armor', 'weapon', 'tank', 'ammo', 
-                                    'score', 'kills', 'game', 'playing', 'match'
-                                ])):
-                                logging.info(f"Successfully joined game! New URL: {new_url}")
-                                bot_state["current_map"] = preferred_map
-                                game_joined = True
-                                break
-                            else:
-                                logging.warning(f"Button click didn't enter game, trying next option")
-                                
-                except Exception as e:
-                    logging.warning(f"Could not click game join button with selector {selector}: {e}")
-                    continue
-                    
-                if game_joined:
-                    break
-            
-            if not game_joined:
-                logging.error("Could not find working game join buttons")
-                # Take screenshot for debugging
-                await self.page.screenshot(path="/tmp/tankpit_cant_join_game.png")
+            # Click in the middle of the page/map to spawn at that location
+            try:
+                # Get viewport size
+                viewport_size = self.page.viewport_size
+                center_x = viewport_size["width"] // 2
+                center_y = viewport_size["height"] // 2
                 
-                # Maybe we're already in the game? Check page content
+                logging.info(f"Clicking center of map at coordinates ({center_x}, {center_y})")
+                
+                # Click in the center of the map
+                await self.page.mouse.click(center_x, center_y)
+                
+                # Wait for game to load after clicking
+                await self.page.wait_for_timeout(5000)
+                await self.page.wait_for_load_state("networkidle", timeout=15000)
+                
+                # Check if we successfully entered the game
+                new_url = self.page.url
+                page_content = await self.page.content()
+                
+                # Look for game interface indicators after map click
+                if (new_url != current_url or 
+                    any(keyword in page_content.lower() for keyword in [
+                        'fuel', 'health', 'armor', 'weapon', 'tank', 'ammo', 
+                        'score', 'kills', 'playing', 'match', 'game'
+                    ])):
+                    logging.info(f"Successfully entered game by clicking map center! New URL: {new_url}")
+                    bot_state["current_map"] = preferred_map
+                    game_joined = True
+                else:
+                    logging.info("Clicked map center, checking if we're in game interface...")
+                    # Sometimes the URL doesn't change but we're still in the game
+                    # Check for game elements in the DOM
+                    game_elements = await self.page.query_selector_all(
+                        'canvas, #game, .game, .game-area, .map, .battlefield'
+                    )
+                    if game_elements:
+                        logging.info("Found game canvas/elements - assuming successful game entry")
+                        bot_state["current_map"] = preferred_map
+                        game_joined = True
+                    else:
+                        logging.warning("Map click didn't seem to enter game")
+                        # Take screenshot for debugging
+                        await self.page.screenshot(path="/tmp/tankpit_after_map_click.png")
+                
+            except Exception as e:
+                logging.error(f"Failed to click map center: {e}")
+                
+            if not game_joined:
+                logging.error("Could not enter game by clicking map")
+                
+                # Maybe we're already in the game? Check page content again
                 page_content = await self.page.content()
                 if any(keyword in page_content.lower() for keyword in [
                     'fuel', 'health', 'armor', 'weapon', 'tank', 'ammo'
@@ -800,7 +790,7 @@ class TankpitBot:
                 
             # Wait for game interface to fully load
             await self.page.wait_for_timeout(5000)
-            logging.info("Game interface should now be fully loaded")
+            logging.info("Game interface should now be fully loaded after map click")
             
             return True
             
