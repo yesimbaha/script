@@ -145,31 +145,61 @@ class TankpitBot:
     async def login(self, username: str, password: str):
         """Login to tankpit.com with improved error handling"""
         try:
-            # Start browser if not already running
+            # Start fresh browser session
             if not await self.start_browser():
                 return False
                 
-            # Wait for page to fully load
+            # Wait for page to fully load and verify we're on the right page
             await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
             
-            # TankPit.com specific: Click the header login link to show the overlay
-            try:
-                header_login = await self.page.wait_for_selector('#header-login', timeout=5000)
-                await header_login.click()
-                logging.info("Clicked header login link")
-                await self.page.wait_for_timeout(2000)  # Wait for overlay to appear
-            except Exception as e:
-                logging.error(f"Could not find or click header login link: {e}")
-                # Try alternative methods to show login form
-                login_links = await self.page.query_selector_all('a[href="#login"], a:has-text("Log in"), a:has-text("Login")')
-                if login_links:
-                    await login_links[0].click()
-                    await self.page.wait_for_timeout(2000)
-                else:
-                    logging.error("Could not find any login links")
-                    return False
+            # Take screenshot for debugging
+            await self.page.screenshot(path="/tmp/tankpit_before_login.png")
             
-            # Now the login form should be visible, look for the specific fields
+            # Verify page content
+            page_content = await self.page.content()
+            if "header-login" not in page_content:
+                logging.error("Page doesn't contain expected login elements")
+                # Try refreshing the page
+                await self.page.reload()
+                await self.page.wait_for_load_state("networkidle", timeout=10000)
+                page_content = await self.page.content()
+            
+            # TankPit.com specific: Click the header login link to show the overlay
+            login_clicked = False
+            
+            # Try multiple approaches to find and click the login link
+            login_selectors = [
+                '#header-login',
+                'a[href="#login"]',
+                'a:has-text("Log in")',
+                'a:has-text("Login")'
+            ]
+            
+            for selector in login_selectors:
+                try:
+                    header_login = await self.page.wait_for_selector(selector, timeout=3000)
+                    if header_login:
+                        # Check if element is visible and clickable
+                        is_visible = await header_login.is_visible()
+                        if is_visible:
+                            await header_login.click()
+                            logging.info(f"Clicked login link with selector: {selector}")
+                            login_clicked = True
+                            break
+                        else:
+                            logging.warning(f"Login element found but not visible: {selector}")
+                except Exception as e:
+                    logging.warning(f"Could not find login element with selector {selector}: {e}")
+                    continue
+            
+            if not login_clicked:
+                logging.error("Could not find any clickable login elements")
+                return False
+                
+            # Wait for login overlay to appear
+            await self.page.wait_for_timeout(2000)
+            
+            # Now look for the login form fields
             username_field = None
             password_field = None
             
@@ -179,6 +209,8 @@ class TankpitBot:
                 logging.info("Found tankpit.com username field: #login-username")
             except Exception as e:
                 logging.error(f"Could not find username field: {e}")
+                # Take screenshot for debugging
+                await self.page.screenshot(path="/tmp/tankpit_no_username.png")
                 return False
             
             try:
@@ -186,6 +218,8 @@ class TankpitBot:
                 logging.info("Found tankpit.com password field")
             except Exception as e:
                 logging.error(f"Could not find password field: {e}")
+                # Take screenshot for debugging
+                await self.page.screenshot(path="/tmp/tankpit_no_password.png")
                 return False
             
             # Fill in credentials
@@ -193,7 +227,7 @@ class TankpitBot:
             await password_field.fill(password)
             logging.info("Filled in credentials")
             
-            # Look for submit button - tankpit.com uses: <input type="submit" value="Log in">
+            # Look for submit button
             try:
                 submit_button = await self.page.wait_for_selector('#login input[type="submit"]', timeout=5000)
                 logging.info("Found submit button")
@@ -210,12 +244,16 @@ class TankpitBot:
             current_url = self.page.url
             page_content = await self.page.content()
             
+            # Take screenshot after login attempt
+            await self.page.screenshot(path="/tmp/tankpit_after_login_attempt.png")
+            
             # TankPit specific success indicators
             if ("dashboard" in current_url.lower() or 
                 "game" in current_url.lower() or 
                 "play" in current_url.lower() or
                 "welcome" in page_content.lower() or
-                "logout" in page_content.lower()):
+                "logout" in page_content.lower() or
+                f"Logged in: {username}" in page_content):
                 logging.info("Login appears successful based on page content")
                 return True
             
@@ -231,7 +269,7 @@ class TankpitBot:
             except:
                 pass
             
-            # Check if login overlay is still visible (indicates failure)
+            # Check if login overlay disappeared (success indicator)
             try:
                 login_overlay = await self.page.query_selector('#login.overlay')
                 if login_overlay:
@@ -240,24 +278,18 @@ class TankpitBot:
                         logging.info("Login overlay disappeared, login likely successful")
                         return True
                     else:
-                        # Check if there are any error indicators in the overlay
-                        form_content = await login_overlay.inner_text()
-                        if "incorrect" in form_content.lower() or "invalid" in form_content.lower() or "error" in form_content.lower():
-                            logging.error("Login failed - error in form content")
-                            return False
-                        
-                        logging.info("Login overlay still visible but no explicit errors")
+                        logging.error("Login overlay still visible, login likely failed")
                         return False
             except:
                 pass
             
-            # Take a screenshot for debugging
-            await self.page.screenshot(path="/tmp/tankpit_after_login.png")
-            logging.info("Login attempt completed, screenshot saved")
+            # Final check - look for user info in page content
+            if f"Logged in: {username}" in page_content or username in page_content:
+                logging.info("Found username in page content, login successful")
+                return True
             
-            # If we got here and no errors were detected, assume success
-            logging.info("Login completed, no explicit error indicators found")
-            return True
+            logging.error("Login failed - no success indicators found")
+            return False
             
         except Exception as e:
             logging.error(f"Login failed with exception: {e}")
