@@ -62,6 +62,7 @@ class BotSettings(BaseModel):
     target_player: str = ""
     username: str = ""
     password: str = ""
+    preferred_map: str = "practice"  # "practice", "tournament", "any"
 
 class LoginCredentials(BaseModel):
     username: str
