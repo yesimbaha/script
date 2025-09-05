@@ -596,32 +596,63 @@ class TankpitBot:
                 bottom_ui_start = int(height * 0.75)
                 ui_area = img[bottom_ui_start:height, :]
                 
-                # Convert to HSV for better color detection
+                # Convert to different color spaces for analysis
                 hsv = cv2.cvtColor(ui_area, cv2.COLOR_BGR2HSV)
+                gray = cv2.cvtColor(ui_area, cv2.COLOR_BGR2GRAY)
                 
-                # Look for blue color (fuel bar) - adjust ranges based on the bar color
-                blue_lower = np.array([100, 50, 50])
-                blue_upper = np.array([130, 255, 255])
-                blue_mask = cv2.inRange(hsv, blue_lower, blue_upper)
+                # Look for black pixels (depleted health) - very dark pixels
+                black_lower = np.array([0, 0, 0])
+                black_upper = np.array([30, 30, 30])  # Very dark but not pure black due to compression
+                black_mask = cv2.inRange(ui_area, black_lower, black_upper)
                 
-                # Look for red color (health/damage indicator)
-                red_lower1 = np.array([0, 50, 50])
-                red_upper1 = np.array([10, 255, 255])
-                red_lower2 = np.array([170, 50, 50])
-                red_upper2 = np.array([180, 255, 255])
-                red_mask1 = cv2.inRange(hsv, red_lower1, red_upper1)
-                red_mask2 = cv2.inRange(hsv, red_lower2, red_upper2)
-                red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+                # Alternative: use grayscale threshold for black detection
+                _, black_thresh = cv2.threshold(gray, 40, 255, cv2.THRESH_BINARY_INV)
                 
-                # Calculate fuel percentage based on blue vs red ratio
-                blue_pixels = cv2.countNonZero(blue_mask)
-                red_pixels = cv2.countNonZero(red_mask)
-                total_bar_pixels = blue_pixels + red_pixels
+                # Combine both black detection methods
+                black_combined = cv2.bitwise_or(black_mask, black_thresh)
                 
-                if total_bar_pixels > 100:  # Ensure we found a significant bar
-                    fuel_percentage = int((blue_pixels / total_bar_pixels) * 100)
-                    logging.info(f"Detected fuel level {fuel_percentage}% via color analysis (blue: {blue_pixels}, red: {red_pixels})")
-                    return fuel_percentage
+                # Look for colored pixels (remaining health) - exclude very dark and very light pixels
+                # This will catch tank colors (which can be various colors)
+                colored_lower = np.array([40, 40, 40])   # Not too dark
+                colored_upper = np.array([220, 220, 220]) # Not too bright (avoid white UI elements)
+                colored_mask = cv2.inRange(ui_area, colored_lower, colored_upper)
+                
+                # Remove black pixels from colored mask
+                colored_only = cv2.bitwise_and(colored_mask, cv2.bitwise_not(black_combined))
+                
+                # Count pixels
+                black_pixels = cv2.countNonZero(black_combined)
+                colored_pixels = cv2.countNonZero(colored_only)
+                total_bar_pixels = black_pixels + colored_pixels
+                
+                # Only proceed if we found a significant bar (likely the health bar)
+                if total_bar_pixels > 50:  # Reduced threshold
+                    if total_bar_pixels > 0:
+                        fuel_percentage = int((colored_pixels / total_bar_pixels) * 100)
+                        fuel_percentage = max(0, min(100, fuel_percentage))  # Clamp to 0-100
+                        logging.info(f"Detected fuel level {fuel_percentage}% via color analysis (tank_color: {colored_pixels}, black: {black_pixels})")
+                        return fuel_percentage
+                        
+                # Try alternative approach: look for the most common non-black color in bottom area
+                # This might be the tank color
+                if total_bar_pixels <= 50:
+                    # Create mask for bottom area excluding very dark and very light pixels
+                    mid_range_mask = cv2.inRange(ui_area, np.array([30, 30, 30]), np.array([200, 200, 200]))
+                    
+                    if cv2.countNonZero(mid_range_mask) > 0:
+                        # Find the most dominant color (excluding black/dark pixels)
+                        pixels = ui_area[mid_range_mask > 0]
+                        if len(pixels) > 0:
+                            # Use a simple approach: assume most pixels are health, few are black
+                            dark_pixels = cv2.countNonZero(cv2.inRange(ui_area, np.array([0, 0, 0]), np.array([50, 50, 50])))
+                            total_ui_pixels = ui_area.shape[0] * ui_area.shape[1]
+                            health_pixels = total_ui_pixels - dark_pixels
+                            
+                            if total_ui_pixels > 0:
+                                fuel_percentage = int((health_pixels / total_ui_pixels) * 100)
+                                fuel_percentage = max(20, min(100, fuel_percentage))  # Reasonable bounds
+                                logging.info(f"Estimated fuel level {fuel_percentage}% via alternative analysis")
+                                return fuel_percentage
                     
             except Exception as e:
                 logging.error(f"Error in visual fuel detection: {e}")
