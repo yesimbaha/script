@@ -49,7 +49,7 @@ bot_state = {
         "target_player": "",
         "username": "",
         "password": "",
-        "preferred_map": "practice"
+        "preferred_map": "world"
     }
 }
 
