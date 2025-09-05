@@ -107,7 +107,8 @@ function App() {
         refuel_threshold: response.data.settings.refuel_threshold,
         shield_threshold: response.data.settings.shield_threshold,
         safe_threshold: response.data.settings.safe_threshold,
-        target_player: response.data.settings.target_player
+        target_player: response.data.settings.target_player,
+        preferred_map: response.data.settings.preferred_map || 'practice'
       });
     } catch (error) {
       addLog(`Error fetching status: ${error.message}`);
