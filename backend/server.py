@@ -546,8 +546,80 @@ class TankpitBot:
             logging.error(f"Failed to detect fuel level: {e}")
             return 50  # Default value
     
+    async def get_available_maps(self):
+        """Get list of available maps/game modes"""
+        try:
+            if not self.page:
+                logging.error("No page available for map detection")
+                return []
+                
+            maps = []
+            
+            # Look for different game mode options
+            map_selectors = [
+                'a:has-text("Practice")',
+                'button:has-text("Practice")',
+                'a:has-text("Tournament")',
+                'button:has-text("Tournament")',
+                'a:has-text("Play")',
+                'button:has-text("Play")',
+                '.game-mode',
+                '.map-option',
+                '[data-map]',
+                '[data-mode]'
+            ]
+            
+            for selector in map_selectors:
+                try:
+                    elements = await self.page.query_selector_all(selector)
+                    for element in elements:
+                        text = await element.inner_text()
+                        href = await element.get_attribute('href') or ""
+                        data_map = await element.get_attribute('data-map') or ""
+                        
+                        if text and len(text.strip()) > 0:
+                            map_info = {
+                                "name": text.strip(),
+                                "selector": selector,
+                                "element": element,
+                                "href": href,
+                                "data_map": data_map
+                            }
+                            
+                            # Categorize the map type
+                            text_lower = text.lower()
+                            if "practice" in text_lower:
+                                map_info["type"] = "practice"
+                            elif "tournament" in text_lower or "tourney" in text_lower:
+                                map_info["type"] = "tournament"
+                            elif "play" in text_lower:
+                                map_info["type"] = "general"
+                            else:
+                                map_info["type"] = "unknown"
+                            
+                            maps.append(map_info)
+                            logging.info(f"Found map option: {text.strip()} (type: {map_info['type']})")
+                            
+                except Exception as e:
+                    continue
+            
+            # Remove duplicates based on name
+            unique_maps = []
+            seen_names = set()
+            for map_info in maps:
+                if map_info["name"] not in seen_names:
+                    unique_maps.append(map_info)
+                    seen_names.add(map_info["name"])
+            
+            logging.info(f"Found {len(unique_maps)} unique map options")
+            return unique_maps
+            
+        except Exception as e:
+            logging.error(f"Failed to get available maps: {e}")
+            return []
+
     async def enter_game(self):
-        """Enter the actual tankpit.com game interface"""
+        """Enter the actual tankpit.com game interface with map selection"""
         try:
             if not self.page:
                 logging.error("No page available for game entry")
@@ -556,64 +628,95 @@ class TankpitBot:
             current_url = self.page.url
             logging.info(f"Attempting to enter game from URL: {current_url}")
             
-            # Look for play/game entry buttons
-            play_selectors = [
-                'a:has-text("Play")',
-                'button:has-text("Play")',
-                'a:has-text("Play Now")',
-                'button:has-text("Play Now")',
-                '.play-button',
-                '#play-button',
-                'a[href*="play"]',
-                'a[href*="game"]',
-                'button:has-text("Enter")',
-                'button:has-text("Start")'
-            ]
+            # Get user's preferred map type
+            preferred_map = bot_state["settings"].get("preferred_map", "practice")
+            logging.info(f"User prefers map type: {preferred_map}")
             
-            game_entered = False
+            # Get available maps
+            available_maps = await self.get_available_maps()
             
-            for selector in play_selectors:
-                try:
-                    play_button = await self.page.wait_for_selector(selector, timeout=3000)
-                    if play_button:
-                        # Check if button is visible and clickable
-                        is_visible = await play_button.is_visible()
-                        if is_visible:
-                            button_text = await play_button.inner_text()
-                            logging.info(f"Found play button: {button_text} with selector: {selector}")
-                            
+            if not available_maps:
+                logging.warning("No maps detected, falling back to generic play button")
+                # Fallback to original logic
+                play_selectors = [
+                    'a:has-text("Play")',
+                    'button:has-text("Play")',
+                    'a:has-text("Play Now")',
+                    'button:has-text("Play Now")',
+                    '.play-button',
+                    '#play-button'
+                ]
+                
+                for selector in play_selectors:
+                    try:
+                        play_button = await self.page.wait_for_selector(selector, timeout=3000)
+                        if play_button and await play_button.is_visible():
                             await play_button.click()
                             await self.page.wait_for_load_state("networkidle", timeout=15000)
-                            
-                            # Check if we successfully entered the game
-                            new_url = self.page.url
-                            page_content = await self.page.content()
-                            
-                            if (new_url != current_url or 
-                                "game" in new_url.lower() or 
-                                "play" in new_url.lower() or
-                                any(keyword in page_content.lower() for keyword in ['fuel', 'tank', 'health', 'armor', 'weapon'])):
-                                logging.info(f"Successfully entered game! New URL: {new_url}")
-                                game_entered = True
-                                break
-                            else:
-                                logging.warning(f"Click didn't seem to enter game, trying next option")
-                                
-                except Exception as e:
-                    logging.warning(f"Could not find/click play button with selector {selector}: {e}")
-                    continue
-            
-            if not game_entered:
-                logging.error("Could not find any working play/game entry buttons")
-                # Take screenshot for debugging
-                await self.page.screenshot(path="/tmp/tankpit_no_game_entry.png")
+                            logging.info("Clicked generic play button")
+                            return True
+                    except:
+                        continue
+                        
                 return False
-                
-            # Wait a bit more for game interface to fully load
-            await self.page.wait_for_timeout(3000)
-            logging.info("Game interface should now be loaded")
             
-            return True
+            # Try to select the preferred map type
+            selected_map = None
+            
+            # First, look for exact match
+            for map_info in available_maps:
+                if map_info["type"] == preferred_map:
+                    selected_map = map_info
+                    logging.info(f"Found preferred map type: {map_info['name']}")
+                    break
+            
+            # If no exact match and user wants practice, look for practice-like options
+            if not selected_map and preferred_map == "practice":
+                for map_info in available_maps:
+                    if any(keyword in map_info["name"].lower() for keyword in ["practice", "training", "test"]):
+                        selected_map = map_info
+                        logging.info(f"Found practice-like map: {map_info['name']}")
+                        break
+            
+            # If no exact match and user wants tournament, look for tournament-like options
+            if not selected_map and preferred_map == "tournament":
+                for map_info in available_maps:
+                    if any(keyword in map_info["name"].lower() for keyword in ["tournament", "tourney", "competitive", "ranked"]):
+                        selected_map = map_info
+                        logging.info(f"Found tournament-like map: {map_info['name']}")
+                        break
+            
+            # If still no match, pick the first available map
+            if not selected_map:
+                selected_map = available_maps[0]
+                logging.info(f"No preferred map found, using first available: {selected_map['name']}")
+            
+            # Click the selected map
+            try:
+                await selected_map["element"].click()
+                await self.page.wait_for_load_state("networkidle", timeout=15000)
+                
+                # Check if we successfully entered the game
+                new_url = self.page.url
+                page_content = await self.page.content()
+                
+                if (new_url != current_url or 
+                    "game" in new_url.lower() or 
+                    "play" in new_url.lower() or
+                    any(keyword in page_content.lower() for keyword in ['fuel', 'tank', 'health', 'armor', 'weapon'])):
+                    logging.info(f"Successfully entered game with map: {selected_map['name']}! New URL: {new_url}")
+                    bot_state["current_map"] = selected_map["name"]
+                    
+                    # Wait for game interface to fully load
+                    await self.page.wait_for_timeout(3000)
+                    return True
+                else:
+                    logging.error("Failed to enter game after clicking map")
+                    return False
+                    
+            except Exception as e:
+                logging.error(f"Failed to click selected map: {e}")
+                return False
             
         except Exception as e:
             logging.error(f"Failed to enter game: {e}")
