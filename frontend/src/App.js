@@ -36,8 +36,12 @@ function App() {
     refuel_threshold: 25,
     shield_threshold: 10,
     safe_threshold: 85,
-    target_player: ''
+    target_player: '',
+    preferred_map: 'practice'
   });
+
+  // Map state
+  const [availableMaps, setAvailableMaps] = useState([]);
 
   // WebSocket connection
   const wsRef = useRef(null);
