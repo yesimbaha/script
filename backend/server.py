@@ -154,51 +154,72 @@ class TankpitBot:
             # Wait for page to fully load
             await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
             
-            # Try to find login elements with multiple selector strategies
-            login_selectors = [
-                'input[name="username"]',
-                'input[name="user"]', 
-                'input[name="login"]',
-                'input[type="text"]',
-                '#username',
-                '#user',
-                '.username',
-                '[placeholder*="username" i]',
-                '[placeholder*="user" i]'
-            ]
+            # TankPit.com specific: The login form is in a hidden overlay
+            # First, we need to click on the login link to show the form
+            login_links = await self.page.query_selector_all('a[href*="login"], a:has-text("Log in"), a:has-text("Login")')
+            if login_links:
+                await login_links[0].click()
+                await self.page.wait_for_timeout(2000)  # Wait for overlay to appear
             
-            password_selectors = [
-                'input[name="password"]',
-                'input[name="pass"]',
-                'input[type="password"]',
-                '#password',
-                '#pass',
-                '.password',
-                '[placeholder*="password" i]'
-            ]
+            # Now look for the specific tankpit.com login form
+            # The form is: <input type="text" id="login-username" name="loginname" placeholder="Username">
+            # and: <input type="password" name="password" placeholder="Password">
             
             username_field = None
             password_field = None
             
-            # Try to find username field
-            for selector in login_selectors:
-                try:
-                    username_field = await self.page.wait_for_selector(selector, timeout=2000)
-                    if username_field:
-                        logging.info(f"Found username field with selector: {selector}")
-                        break
-                except:
-                    continue
+            # Try tankpit.com specific selectors first
+            try:
+                username_field = await self.page.wait_for_selector('#login-username', timeout=5000)
+                logging.info("Found tankpit.com username field: #login-username")
+            except:
+                # Fallback to general selectors
+                login_selectors = [
+                    'input[name="loginname"]',
+                    'input[name="username"]',
+                    'input[name="user"]', 
+                    'input[name="login"]',
+                    'input[type="text"]',
+                    '#username',
+                    '#user',
+                    '.username',
+                    '[placeholder*="username" i]',
+                    '[placeholder*="user" i]'
+                ]
+                
+                for selector in login_selectors:
+                    try:
+                        username_field = await self.page.wait_for_selector(selector, timeout=2000)
+                        if username_field:
+                            logging.info(f"Found username field with selector: {selector}")
+                            break
+                    except:
+                        continue
             
-            # Try to find password field
-            for selector in password_selectors:
-                try:
-                    password_field = await self.page.wait_for_selector(selector, timeout=2000)
-                    if password_field:
-                        logging.info(f"Found password field with selector: {selector}")
-                        break
-                except:
-                    continue
+            # Try tankpit.com password field
+            try:
+                password_field = await self.page.wait_for_selector('input[name="password"][type="password"]', timeout=5000)
+                logging.info("Found tankpit.com password field")
+            except:
+                # Fallback to general password selectors
+                password_selectors = [
+                    'input[name="password"]',
+                    'input[name="pass"]',
+                    'input[type="password"]',
+                    '#password',
+                    '#pass',
+                    '.password',
+                    '[placeholder*="password" i]'
+                ]
+                
+                for selector in password_selectors:
+                    try:
+                        password_field = await self.page.wait_for_selector(selector, timeout=2000)
+                        if password_field:
+                            logging.info(f"Found password field with selector: {selector}")
+                            break
+                    except:
+                        continue
             
             if not username_field or not password_field:
                 # Take screenshot for debugging
@@ -206,18 +227,10 @@ class TankpitBot:
                 logging.error("Could not find login form elements. Screenshot saved to /tmp/tankpit_login_debug.png")
                 
                 # Get page content for analysis
-                page_content = await self.page.content()
-                logging.info(f"Page title: {await self.page.title()}")
-                logging.info(f"Page URL: {self.page.url}")
-                
-                # Check if we need to navigate to a login page
-                if "login" not in self.page.url.lower():
-                    # Try to find login link
-                    login_links = await self.page.query_selector_all('a[href*="login"], a:has-text("Login"), a:has-text("Sign In")')
-                    if login_links:
-                        await login_links[0].click()
-                        await self.page.wait_for_load_state("networkidle", timeout=10000)
-                        return await self.login(username, password)  # Retry after navigation
+                page_title = await self.page.title()
+                page_url = self.page.url
+                logging.info(f"Page title: {page_title}")
+                logging.info(f"Page URL: {page_url}")
                 
                 return False
             
@@ -225,10 +238,13 @@ class TankpitBot:
             await username_field.fill(username)
             await password_field.fill(password)
             
-            # Look for submit button
+            # Look for submit button - tankpit.com uses: <input type="submit" value="Log in">
+            submit_button = None
             submit_selectors = [
-                'button[type="submit"]',
+                'input[type="submit"][value*="Log in"]',
                 'input[type="submit"]',
+                'button[type="submit"]',
+                'button:has-text("Log in")',
                 'button:has-text("Login")',
                 'button:has-text("Sign In")',
                 '.login-button',
@@ -236,45 +252,58 @@ class TankpitBot:
                 '[value="Login"]'
             ]
             
-            login_button = None
             for selector in submit_selectors:
                 try:
-                    login_button = await self.page.wait_for_selector(selector, timeout=2000)
-                    if login_button:
-                        logging.info(f"Found login button with selector: {selector}")
+                    submit_button = await self.page.wait_for_selector(selector, timeout=2000)
+                    if submit_button:
+                        logging.info(f"Found submit button with selector: {selector}")
                         break
                 except:
                     continue
             
-            if login_button:
-                await login_button.click()
+            if submit_button:
+                await submit_button.click()
                 await self.page.wait_for_load_state("networkidle", timeout=15000)
                 
-                # Check if login was successful by looking for common post-login indicators
+                # Check if login was successful
                 current_url = self.page.url
-                if "dashboard" in current_url.lower() or "game" in current_url.lower() or "play" in current_url.lower():
-                    logging.info("Login appears successful based on URL change")
+                page_content = await self.page.content()
+                
+                # TankPit specific success indicators
+                if ("dashboard" in current_url.lower() or 
+                    "game" in current_url.lower() or 
+                    "play" in current_url.lower() or
+                    "welcome" in page_content.lower() or
+                    "logout" in page_content.lower()):
+                    logging.info("Login appears successful based on page content")
                     return True
                 
                 # Check for error messages
-                error_elements = await self.page.query_selector_all('.error, .alert-error, [class*="error"]')
+                error_elements = await self.page.query_selector_all('.error, .alert-error, [class*="error"], .message')
                 if error_elements:
-                    error_text = await error_elements[0].inner_text()
-                    logging.error(f"Login error detected: {error_text}")
-                    return False
-                    
-                # If no clear success or error indicators, assume success if no login form is visible
-                remaining_username_fields = await self.page.query_selector_all('input[type="text"], input[name="username"]')
-                if not remaining_username_fields:
-                    logging.info("Login form disappeared, assuming successful login")
-                    return True
+                    for error_elem in error_elements:
+                        error_text = await error_elem.inner_text()
+                        if error_text.strip():
+                            logging.error(f"Login error detected: {error_text}")
+                            return False
+                
+                # Check if login overlay is still visible (indicates failure)
+                login_overlay = await self.page.query_selector('#login.overlay')
+                if login_overlay:
+                    overlay_visible = await login_overlay.is_visible()
+                    if overlay_visible:
+                        logging.error("Login overlay still visible, login likely failed")
+                        return False
+                
+                # If we got here, assume success
+                logging.info("Login completed, no error indicators found")
+                return True
                 
             else:
                 # Try pressing Enter on password field
                 await password_field.press('Enter')
                 await self.page.wait_for_load_state("networkidle", timeout=15000)
-            
-            return True
+                return True
             
         except Exception as e:
             logging.error(f"Login failed with exception: {e}")
