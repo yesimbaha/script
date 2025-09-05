@@ -544,6 +544,79 @@ class TankpitBot:
             logging.error(f"Failed to detect fuel level: {e}")
             return 50  # Default value
     
+    async def enter_game(self):
+        """Enter the actual tankpit.com game interface"""
+        try:
+            if not self.page:
+                logging.error("No page available for game entry")
+                return False
+                
+            current_url = self.page.url
+            logging.info(f"Attempting to enter game from URL: {current_url}")
+            
+            # Look for play/game entry buttons
+            play_selectors = [
+                'a:has-text("Play")',
+                'button:has-text("Play")',
+                'a:has-text("Play Now")',
+                'button:has-text("Play Now")',
+                '.play-button',
+                '#play-button',
+                'a[href*="play"]',
+                'a[href*="game"]',
+                'button:has-text("Enter")',
+                'button:has-text("Start")'
+            ]
+            
+            game_entered = False
+            
+            for selector in play_selectors:
+                try:
+                    play_button = await self.page.wait_for_selector(selector, timeout=3000)
+                    if play_button:
+                        # Check if button is visible and clickable
+                        is_visible = await play_button.is_visible()
+                        if is_visible:
+                            button_text = await play_button.inner_text()
+                            logging.info(f"Found play button: {button_text} with selector: {selector}")
+                            
+                            await play_button.click()
+                            await self.page.wait_for_load_state("networkidle", timeout=15000)
+                            
+                            # Check if we successfully entered the game
+                            new_url = self.page.url
+                            page_content = await self.page.content()
+                            
+                            if (new_url != current_url or 
+                                "game" in new_url.lower() or 
+                                "play" in new_url.lower() or
+                                any(keyword in page_content.lower() for keyword in ['fuel', 'tank', 'health', 'armor', 'weapon'])):
+                                logging.info(f"Successfully entered game! New URL: {new_url}")
+                                game_entered = True
+                                break
+                            else:
+                                logging.warning(f"Click didn't seem to enter game, trying next option")
+                                
+                except Exception as e:
+                    logging.warning(f"Could not find/click play button with selector {selector}: {e}")
+                    continue
+            
+            if not game_entered:
+                logging.error("Could not find any working play/game entry buttons")
+                # Take screenshot for debugging
+                await self.page.screenshot(path="/tmp/tankpit_no_game_entry.png")
+                return False
+                
+            # Wait a bit more for game interface to fully load
+            await self.page.wait_for_timeout(3000)
+            logging.info("Game interface should now be loaded")
+            
+            return True
+            
+        except Exception as e:
+            logging.error(f"Failed to enter game: {e}")
+            return False
+    
     async def activate_bot_and_mine(self):
         """Activate bot and mine features on new screen"""
         try:
@@ -552,12 +625,14 @@ class TankpitBot:
             if bot_button:
                 await bot_button.click()
                 await self.page.wait_for_timeout(1000)
+                logging.info("Activated bot feature")
             
-            # Look for mine button
+            # Look for mine button  
             mine_button = await self.page.query_selector("button:has-text('mine'), .mine-button, [data-action='mine']")
             if mine_button:
                 await mine_button.click()
                 await self.page.wait_for_timeout(1000)
+                logging.info("Activated mine feature")
                 
             return True
         except Exception as e:
