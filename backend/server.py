@@ -353,7 +353,6 @@ class TankpitBot:
                     page_content = await self.page.content()
                     
                     # Look for the tankpit JavaScript object that contains user info
-                    import re
                     
                     # Look for tank name in various patterns
                     tank_patterns = [
