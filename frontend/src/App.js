@@ -45,23 +45,38 @@ function App() {
   // Initialize WebSocket connection
   useEffect(() => {
     const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-    wsRef.current = new WebSocket(`${wsUrl}/api/ws/bot-status`);
     
-    wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'status_update') {
-        setBotStatus(data.data);
-        addLog(`Status: ${data.data.status} | Fuel: ${data.data.current_fuel}%`);
-      }
+    const connectWebSocket = () => {
+      wsRef.current = new WebSocket(`${wsUrl}/api/ws/bot-status`);
+      
+      wsRef.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'status_update') {
+          setBotStatus(data.data);
+          addLog(`Status: ${data.data.status} | Fuel: ${data.data.current_fuel}%`);
+        } else if (data.type === 'ping') {
+          // Handle ping - connection is alive
+          console.log('WebSocket ping received');
+        }
+      };
+
+      wsRef.current.onopen = () => {
+        addLog('Connected to bot status feed');
+      };
+
+      wsRef.current.onclose = () => {
+        addLog('Disconnected from bot status feed - attempting reconnect...');
+        // Reconnect after 5 seconds
+        setTimeout(connectWebSocket, 5000);
+      };
+
+      wsRef.current.onerror = (error) => {
+        addLog('WebSocket error - connection lost');
+        console.error('WebSocket error:', error);
+      };
     };
 
-    wsRef.current.onopen = () => {
-      addLog('Connected to bot status feed');
-    };
-
-    wsRef.current.onclose = () => {
-      addLog('Disconnected from bot status feed');
-    };
+    connectWebSocket();
 
     return () => {
       if (wsRef.current) {
