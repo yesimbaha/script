@@ -415,6 +415,10 @@ function App() {
                   <span>Position:</span>
                   <span className="font-mono">({botStatus.position.x}, {botStatus.position.y})</span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span>Current Map:</span>
+                  <span className="font-mono text-green-400">{botStatus.current_map || 'Not in game'}</span>
+                </div>
               </div>
             </div>
 
