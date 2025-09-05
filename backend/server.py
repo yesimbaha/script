@@ -47,7 +47,8 @@ bot_state = {
         "safe_threshold": 85,
         "target_player": "",
         "username": "",
-        "password": ""
+        "password": "",
+        "preferred_map": "practice"
     }
 }
 
