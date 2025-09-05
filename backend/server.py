@@ -17,6 +17,10 @@ import numpy as np
 from PIL import Image
 import base64
 
+# Set Playwright browser path if not set
+if not os.environ.get('PLAYWRIGHT_BROWSERS_PATH'):
+    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/pw-browsers'
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
