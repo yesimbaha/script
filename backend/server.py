@@ -985,8 +985,20 @@ class TankpitBot:
         """Stop the bot and cleanup"""
         self.running = False
         bot_state["running"] = False
-        bot_state["status"] = "stopped"
+        bot_state["status"] = "stopping"
         
+        # Press Q to exit the map before cleanup
+        try:
+            if self.page:
+                logging.info("Pressing Q to exit the map...")
+                await self.page.keyboard.press("q")
+                await self.page.wait_for_timeout(2000)  # Wait for exit to process
+                bot_state["status"] = "exited_map"
+                logging.info("Successfully pressed Q to exit map")
+        except Exception as e:
+            logging.error(f"Failed to press Q to exit map: {e}")
+        
+        bot_state["status"] = "stopped"
         await self.cleanup_browser()
 
 # Global bot instance
