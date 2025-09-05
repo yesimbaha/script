@@ -942,6 +942,15 @@ async def get_tanks():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/bot/maps")
+async def get_maps():
+    """Get available maps"""
+    try:
+        maps = await tankpit_bot.get_available_maps()
+        return {"success": True, "maps": maps}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.post("/bot/select-tank/{tank_id}")
 async def select_tank(tank_id: str):
     """Select a tank"""
