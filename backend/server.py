@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 from PIL import Image
 import base64
+import re
 
 # Set Playwright browser path if not set
 if not os.environ.get('PLAYWRIGHT_BROWSERS_PATH'):
