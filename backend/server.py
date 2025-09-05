@@ -91,9 +91,17 @@ class TankpitBot:
     async def start_browser(self):
         """Initialize browser and navigate to tankpit.com"""
         # Check if browser is already running
-        if self.browser and not self.browser.is_closed():
-            logging.info("Browser already running, reusing existing instance")
-            return True
+        if self.browser:
+            try:
+                # Test if browser is still alive by checking its state
+                await self.browser.new_page()  # This will fail if browser is closed
+                await self.browser.contexts[0].pages[-1].close()  # Close the test page
+                logging.info("Browser already running, reusing existing instance")
+                return True
+            except:
+                # Browser is closed or invalid, continue to create new one
+                self.browser = None
+                self.page = None
             
         try:
             playwright = await async_playwright().__aenter__()
