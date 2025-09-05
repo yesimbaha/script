@@ -448,10 +448,32 @@ async def websocket_endpoint(websocket: WebSocket):
     websocket_connections.append(websocket)
     
     try:
+        # Send initial status
+        initial_status = {
+            "type": "status_update",
+            "data": {
+                "running": bot_state["running"],
+                "current_fuel": bot_state["current_fuel"],
+                "shields_active": bot_state["shields_active"],
+                "position": bot_state["position"],
+                "status": bot_state["status"],
+                "settings": bot_state["settings"]
+            }
+        }
+        await websocket.send_text(json.dumps(initial_status))
+        
+        # Keep connection alive with periodic pings
         while True:
-            await websocket.receive_text()  # Keep connection alive
+            await asyncio.sleep(30)  # Send ping every 30 seconds
+            ping_data = {"type": "ping", "timestamp": datetime.now().isoformat()}
+            await websocket.send_text(json.dumps(ping_data))
     except WebSocketDisconnect:
-        websocket_connections.remove(websocket)
+        if websocket in websocket_connections:
+            websocket_connections.remove(websocket)
+    except Exception as e:
+        logging.error(f"WebSocket error: {e}")
+        if websocket in websocket_connections:
+            websocket_connections.remove(websocket)
 
 # Include router
 app.include_router(api_router)
