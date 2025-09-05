@@ -592,67 +592,92 @@ class TankpitBot:
                 # Get image dimensions
                 height, width = img.shape[:2]
                 
-                # Focus on the bottom UI area where the fuel bar is located (bottom 25% of screen)
-                bottom_ui_start = int(height * 0.75)
-                ui_area = img[bottom_ui_start:height, :]
+                # Focus on a smaller area where the fuel bar is likely located
+                # Based on typical game UI, health bars are usually in bottom-left or bottom-center
+                # Let's try a smaller, more targeted area
                 
-                # Convert to different color spaces for analysis
-                hsv = cv2.cvtColor(ui_area, cv2.COLOR_BGR2HSV)
-                gray = cv2.cvtColor(ui_area, cv2.COLOR_BGR2GRAY)
+                # Try multiple regions to find the fuel bar
+                regions_to_check = [
+                    # Bottom-left area (common for health bars)
+                    {
+                        "name": "bottom-left",
+                        "y_start": int(height * 0.85),
+                        "y_end": height,
+                        "x_start": 0,
+                        "x_end": int(width * 0.3)
+                    },
+                    # Bottom-center area
+                    {
+                        "name": "bottom-center", 
+                        "y_start": int(height * 0.85),
+                        "y_end": height,
+                        "x_start": int(width * 0.35),
+                        "x_end": int(width * 0.65)
+                    },
+                    # Bottom-right area
+                    {
+                        "name": "bottom-right",
+                        "y_start": int(height * 0.85), 
+                        "y_end": height,
+                        "x_start": int(width * 0.7),
+                        "x_end": width
+                    }
+                ]
                 
-                # Look for black pixels (depleted health) - very dark pixels
-                black_lower = np.array([0, 0, 0])
-                black_upper = np.array([30, 30, 30])  # Very dark but not pure black due to compression
-                black_mask = cv2.inRange(ui_area, black_lower, black_upper)
+                best_fuel_percentage = None
+                best_region = None
                 
-                # Alternative: use grayscale threshold for black detection
-                _, black_thresh = cv2.threshold(gray, 40, 255, cv2.THRESH_BINARY_INV)
-                
-                # Combine both black detection methods
-                black_combined = cv2.bitwise_or(black_mask, black_thresh)
-                
-                # Look for colored pixels (remaining health) - exclude very dark and very light pixels
-                # This will catch tank colors (which can be various colors)
-                colored_lower = np.array([40, 40, 40])   # Not too dark
-                colored_upper = np.array([220, 220, 220]) # Not too bright (avoid white UI elements)
-                colored_mask = cv2.inRange(ui_area, colored_lower, colored_upper)
-                
-                # Remove black pixels from colored mask
-                colored_only = cv2.bitwise_and(colored_mask, cv2.bitwise_not(black_combined))
-                
-                # Count pixels
-                black_pixels = cv2.countNonZero(black_combined)
-                colored_pixels = cv2.countNonZero(colored_only)
-                total_bar_pixels = black_pixels + colored_pixels
-                
-                # Only proceed if we found a significant bar (likely the health bar)
-                if total_bar_pixels > 50:  # Reduced threshold
-                    if total_bar_pixels > 0:
-                        fuel_percentage = int((colored_pixels / total_bar_pixels) * 100)
-                        fuel_percentage = max(0, min(100, fuel_percentage))  # Clamp to 0-100
-                        logging.info(f"Detected fuel level {fuel_percentage}% via color analysis (tank_color: {colored_pixels}, black: {black_pixels})")
-                        return fuel_percentage
+                for region in regions_to_check:
+                    try:
+                        # Extract the region
+                        ui_area = img[region["y_start"]:region["y_end"], region["x_start"]:region["x_end"]]
                         
-                # Try alternative approach: look for the most common non-black color in bottom area
-                # This might be the tank color
-                if total_bar_pixels <= 50:
-                    # Create mask for bottom area excluding very dark and very light pixels
-                    mid_range_mask = cv2.inRange(ui_area, np.array([30, 30, 30]), np.array([200, 200, 200]))
-                    
-                    if cv2.countNonZero(mid_range_mask) > 0:
-                        # Find the most dominant color (excluding black/dark pixels)
-                        pixels = ui_area[mid_range_mask > 0]
-                        if len(pixels) > 0:
-                            # Use a simple approach: assume most pixels are health, few are black
-                            dark_pixels = cv2.countNonZero(cv2.inRange(ui_area, np.array([0, 0, 0]), np.array([50, 50, 50])))
-                            total_ui_pixels = ui_area.shape[0] * ui_area.shape[1]
-                            health_pixels = total_ui_pixels - dark_pixels
+                        if ui_area.size == 0:
+                            continue
                             
-                            if total_ui_pixels > 0:
-                                fuel_percentage = int((health_pixels / total_ui_pixels) * 100)
-                                fuel_percentage = max(20, min(100, fuel_percentage))  # Reasonable bounds
-                                logging.info(f"Estimated fuel level {fuel_percentage}% via alternative analysis")
-                                return fuel_percentage
+                        # Look for black pixels (depleted health) - very dark pixels
+                        black_lower = np.array([0, 0, 0])
+                        black_upper = np.array([40, 40, 40])  # Very dark
+                        black_mask = cv2.inRange(ui_area, black_lower, black_upper)
+                        
+                        # Look for colored pixels (remaining health) - exclude very dark and very light
+                        colored_lower = np.array([50, 50, 50])   # Not too dark
+                        colored_upper = np.array([200, 200, 200]) # Not too bright
+                        colored_mask = cv2.inRange(ui_area, colored_lower, colored_upper)
+                        
+                        # Remove black pixels from colored mask to avoid overlap
+                        colored_only = cv2.bitwise_and(colored_mask, cv2.bitwise_not(black_mask))
+                        
+                        # Count pixels
+                        black_pixels = cv2.countNonZero(black_mask)
+                        colored_pixels = cv2.countNonZero(colored_only)
+                        total_bar_pixels = black_pixels + colored_pixels
+                        
+                        # Only consider this region if it has a reasonable bar size
+                        if 20 <= total_bar_pixels <= 5000:  # Reasonable fuel bar size range
+                            fuel_percentage = 100  # Default to full if no black pixels
+                            if total_bar_pixels > 0:
+                                fuel_percentage = int((colored_pixels / total_bar_pixels) * 100)
+                                fuel_percentage = max(0, min(100, fuel_percentage))
+                                
+                            # Prefer regions with more balanced ratios (likely actual fuel bars)
+                            if black_pixels > 0 and colored_pixels > 0:  # Has both colors
+                                if best_fuel_percentage is None or abs(fuel_percentage - 50) < abs(best_fuel_percentage - 50):
+                                    best_fuel_percentage = fuel_percentage
+                                    best_region = region["name"]
+                                    logging.info(f"Found potential fuel bar in {region['name']}: {fuel_percentage}% (colored: {colored_pixels}, black: {black_pixels})")
+                            elif colored_pixels > black_pixels and colored_pixels > 10:  # Mostly colored (high health)
+                                if best_fuel_percentage is None or fuel_percentage > best_fuel_percentage:
+                                    best_fuel_percentage = fuel_percentage
+                                    best_region = region["name"]
+                                    logging.info(f"Found high-health bar in {region['name']}: {fuel_percentage}% (colored: {colored_pixels}, black: {black_pixels})")
+                                    
+                    except Exception as e:
+                        continue
+                
+                if best_fuel_percentage is not None:
+                    logging.info(f"Best fuel detection from {best_region}: {best_fuel_percentage}%")
+                    return best_fuel_percentage
                     
             except Exception as e:
                 logging.error(f"Error in visual fuel detection: {e}")
