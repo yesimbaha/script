@@ -90,53 +90,187 @@ class TankpitBot:
         
     async def start_browser(self):
         """Initialize browser and navigate to tankpit.com"""
-        playwright = await async_playwright().__aenter__()
-        
-        # Launch browser with virtual display for container environment
-        # This allows "visible" browser in headless container
-        self.browser = await playwright.chromium.launch(
-            headless=False,
-            args=[
-                '--no-sandbox', 
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--remote-debugging-port=9222',
-                '--display=:99'
-            ]
-        )
+        # Check if browser is already running
+        if self.browser and not self.browser.is_closed():
+            logging.info("Browser already running, reusing existing instance")
+            return True
             
-        self.page = await self.browser.new_page()
-        
-        # Navigate to tankpit.com
-        await self.page.goto("https://www.tankpit.com")
-        await self.page.wait_for_load_state("networkidle")
-        
-        return True
+        try:
+            playwright = await async_playwright().__aenter__()
+            
+            # Launch browser with virtual display for container environment
+            self.browser = await playwright.chromium.launch(
+                headless=False,
+                args=[
+                    '--no-sandbox', 
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--remote-debugging-port=9222',
+                    '--display=:99'
+                ]
+            )
+                
+            self.page = await self.browser.new_page()
+            
+            # Navigate to tankpit.com with timeout
+            await self.page.goto("https://www.tankpit.com", timeout=15000)
+            await self.page.wait_for_load_state("networkidle", timeout=15000)
+            
+            logging.info("Successfully navigated to tankpit.com")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Failed to start browser: {e}")
+            await self.cleanup_browser()
+            return False
+    
+    async def cleanup_browser(self):
+        """Clean up browser resources"""
+        try:
+            if self.page:
+                await self.page.close()
+                self.page = None
+            if self.browser:
+                await self.browser.close()
+                self.browser = None
+        except Exception as e:
+            logging.error(f"Error cleaning up browser: {e}")
         
     async def login(self, username: str, password: str):
-        """Login to tankpit.com"""
+        """Login to tankpit.com with improved error handling"""
         try:
-            # Look for login form elements
-            await self.page.wait_for_selector("input[type='text'], input[name='username'], input[name='user']", timeout=10000)
-            
-            # Fill login form (adjust selectors based on actual site)
-            username_field = await self.page.query_selector("input[type='text'], input[name='username'], input[name='user']")
-            password_field = await self.page.query_selector("input[type='password'], input[name='password']")
-            
-            if username_field and password_field:
-                await username_field.fill(username)
-                await password_field.fill(password)
+            # Start browser if not already running
+            if not await self.start_browser():
+                return False
                 
-                # Find and click login button
-                login_button = await self.page.query_selector("button[type='submit'], input[type='submit'], button:has-text('Login')")
-                if login_button:
-                    await login_button.click()
-                    await self.page.wait_for_load_state("networkidle")
-                    return True
+            # Wait for page to fully load
+            await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
             
-            return False
+            # Try to find login elements with multiple selector strategies
+            login_selectors = [
+                'input[name="username"]',
+                'input[name="user"]', 
+                'input[name="login"]',
+                'input[type="text"]',
+                '#username',
+                '#user',
+                '.username',
+                '[placeholder*="username" i]',
+                '[placeholder*="user" i]'
+            ]
+            
+            password_selectors = [
+                'input[name="password"]',
+                'input[name="pass"]',
+                'input[type="password"]',
+                '#password',
+                '#pass',
+                '.password',
+                '[placeholder*="password" i]'
+            ]
+            
+            username_field = None
+            password_field = None
+            
+            # Try to find username field
+            for selector in login_selectors:
+                try:
+                    username_field = await self.page.wait_for_selector(selector, timeout=2000)
+                    if username_field:
+                        logging.info(f"Found username field with selector: {selector}")
+                        break
+                except:
+                    continue
+            
+            # Try to find password field
+            for selector in password_selectors:
+                try:
+                    password_field = await self.page.wait_for_selector(selector, timeout=2000)
+                    if password_field:
+                        logging.info(f"Found password field with selector: {selector}")
+                        break
+                except:
+                    continue
+            
+            if not username_field or not password_field:
+                # Take screenshot for debugging
+                await self.page.screenshot(path="/tmp/tankpit_login_debug.png")
+                logging.error("Could not find login form elements. Screenshot saved to /tmp/tankpit_login_debug.png")
+                
+                # Get page content for analysis
+                page_content = await self.page.content()
+                logging.info(f"Page title: {await self.page.title()}")
+                logging.info(f"Page URL: {self.page.url}")
+                
+                # Check if we need to navigate to a login page
+                if "login" not in self.page.url.lower():
+                    # Try to find login link
+                    login_links = await self.page.query_selector_all('a[href*="login"], a:has-text("Login"), a:has-text("Sign In")')
+                    if login_links:
+                        await login_links[0].click()
+                        await self.page.wait_for_load_state("networkidle", timeout=10000)
+                        return await self.login(username, password)  # Retry after navigation
+                
+                return False
+            
+            # Fill in credentials
+            await username_field.fill(username)
+            await password_field.fill(password)
+            
+            # Look for submit button
+            submit_selectors = [
+                'button[type="submit"]',
+                'input[type="submit"]',
+                'button:has-text("Login")',
+                'button:has-text("Sign In")',
+                '.login-button',
+                '#login-button',
+                '[value="Login"]'
+            ]
+            
+            login_button = None
+            for selector in submit_selectors:
+                try:
+                    login_button = await self.page.wait_for_selector(selector, timeout=2000)
+                    if login_button:
+                        logging.info(f"Found login button with selector: {selector}")
+                        break
+                except:
+                    continue
+            
+            if login_button:
+                await login_button.click()
+                await self.page.wait_for_load_state("networkidle", timeout=15000)
+                
+                # Check if login was successful by looking for common post-login indicators
+                current_url = self.page.url
+                if "dashboard" in current_url.lower() or "game" in current_url.lower() or "play" in current_url.lower():
+                    logging.info("Login appears successful based on URL change")
+                    return True
+                
+                # Check for error messages
+                error_elements = await self.page.query_selector_all('.error, .alert-error, [class*="error"]')
+                if error_elements:
+                    error_text = await error_elements[0].inner_text()
+                    logging.error(f"Login error detected: {error_text}")
+                    return False
+                    
+                # If no clear success or error indicators, assume success if no login form is visible
+                remaining_username_fields = await self.page.query_selector_all('input[type="text"], input[name="username"]')
+                if not remaining_username_fields:
+                    logging.info("Login form disappeared, assuming successful login")
+                    return True
+                
+            else:
+                # Try pressing Enter on password field
+                await password_field.press('Enter')
+                await self.page.wait_for_load_state("networkidle", timeout=15000)
+            
+            return True
+            
         except Exception as e:
-            logging.error(f"Login failed: {e}")
+            logging.error(f"Login failed with exception: {e}")
+            await self.cleanup_browser()
             return False
     
     async def get_available_tanks(self):
