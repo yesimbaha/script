@@ -530,7 +530,7 @@ class TankpitBot:
             return False
     
     async def detect_fuel_level(self):
-        """Detect current fuel level from tankpit.com interface - REAL-TIME, NO CACHING"""
+        """Detect current fuel level by precisely measuring the fuel bar at the bottom"""
         try:
             if not self.page:
                 logging.error("No page available for fuel detection")
@@ -549,109 +549,256 @@ class TankpitBot:
                 
             # Get image dimensions
             height, width = img.shape[:2]
+            logging.info(f"Screenshot dimensions: {width}x{height}")
             
             # Focus on the bottom area where the fuel bar is located
-            # Use the exact area from your screenshot - bottom UI area
-            bottom_ui_start = int(height * 0.8)  # Bottom 20% more focused
+            # Narrow down to the exact area where fuel bars typically appear
+            bottom_ui_start = int(height * 0.85)  # Bottom 15% for more precision
             ui_area = img[bottom_ui_start:height, :]
             
             if ui_area.size == 0:
                 logging.error("UI area is empty")
                 return 50
             
-            # Advanced color analysis for real-time fuel detection
-            # Look for tank color (health remaining) vs black (health lost)
-            
-            # Convert to different color spaces for better analysis
-            hsv = cv2.cvtColor(ui_area, cv2.COLOR_BGR2HSV)
-            gray = cv2.cvtColor(ui_area, cv2.COLOR_BGR2GRAY)
-            
-            # Method 1: Detect black pixels (damaged/lost health)
-            # Use multiple thresholds to catch all variations of "empty" health
-            black_masks = []
-            
-            # Very dark pixels (pure black to dark gray)
-            black_mask1 = cv2.inRange(ui_area, np.array([0, 0, 0]), np.array([30, 30, 30]))
-            black_masks.append(black_mask1)
-            
-            # Dark gray (slightly damaged areas)
-            black_mask2 = cv2.inRange(ui_area, np.array([31, 31, 31]), np.array([60, 60, 60]))
-            black_masks.append(black_mask2)
-            
-            # Combine all black/dark masks
-            combined_black_mask = black_mask1
-            for mask in black_masks[1:]:
-                combined_black_mask = cv2.bitwise_or(combined_black_mask, mask)
-            
-            # Method 2: Detect colored pixels (remaining health)
-            # This should be any color that's not black/dark (tank colors)
-            colored_lower = np.array([70, 70, 70])    # Above dark threshold
-            colored_upper = np.array([255, 255, 255]) # All bright colors
-            colored_mask = cv2.inRange(ui_area, colored_lower, colored_upper)
-            
-            # Remove any overlap between colored and black masks
-            colored_only = cv2.bitwise_and(colored_mask, cv2.bitwise_not(combined_black_mask))
-            
-            # Count pixels
-            black_pixels = cv2.countNonZero(combined_black_mask)
-            colored_pixels = cv2.countNonZero(colored_only)
-            total_relevant_pixels = black_pixels + colored_pixels
-            
-            if total_relevant_pixels > 10:  # Need some pixels to analyze
-                fuel_percentage = int((colored_pixels / total_relevant_pixels) * 100)
-                fuel_percentage = max(0, min(100, fuel_percentage))
-                
-                logging.info(f"REAL-TIME fuel detection: {fuel_percentage}% (colored: {colored_pixels}, black: {black_pixels}, total: {total_relevant_pixels})")
-                
-                # Save debug screenshot every few detections to help troubleshoot
+            # NEW APPROACH: Find the actual fuel bar by looking for horizontal rectangles
+            fuel_percentage = await self.find_and_measure_fuel_bar(ui_area, width, height)
+            if fuel_percentage is not None:
+                logging.info(f"PRECISE fuel bar measurement: {fuel_percentage}%")
+                # Save debug screenshot occasionally
                 import random
-                if random.randint(1, 10) == 1:  # 10% chance
-                    await self.page.screenshot(path=f"/tmp/fuel_debug_{fuel_percentage}pct.png")
-                
+                if random.randint(1, 15) == 1:  # Save less frequently
+                    await self.page.screenshot(path=f"/tmp/fuel_precise_{fuel_percentage}pct.png")
                 return fuel_percentage
             
-            # Method 3: Alternative analysis if method 1-2 don't find enough pixels
-            # Look at the overall brightness of the bottom UI
-            gray_ui = cv2.cvtColor(ui_area, cv2.COLOR_BGR2GRAY)
-            
-            # Calculate average brightness
-            mean_brightness = np.mean(gray_ui)
-            
-            # Convert brightness to fuel percentage (this is rough but better than nothing)
-            # Dark = low fuel, Bright = high fuel
-            fuel_from_brightness = int(min(100, max(0, (mean_brightness / 255) * 100)))
-            
-            logging.info(f"Brightness-based fuel estimate: {fuel_from_brightness}% (mean brightness: {mean_brightness})")
-            
-            # Method 4: Histogram analysis for more accurate detection
-            try:
-                # Analyze color histogram in the UI area
-                hist_b = cv2.calcHist([ui_area], [0], None, [256], [0, 256])
-                hist_g = cv2.calcHist([ui_area], [1], None, [256], [0, 256])  
-                hist_r = cv2.calcHist([ui_area], [2], None, [256], [0, 256])
-                
-                # Count dark pixels (0-50 intensity) vs brighter pixels (51-255)
-                dark_pixels_total = np.sum(hist_b[0:51]) + np.sum(hist_g[0:51]) + np.sum(hist_r[0:51])
-                bright_pixels_total = np.sum(hist_b[51:256]) + np.sum(hist_g[51:256]) + np.sum(hist_r[51:256])
-                
-                if dark_pixels_total + bright_pixels_total > 0:
-                    fuel_from_histogram = int((bright_pixels_total / (dark_pixels_total + bright_pixels_total)) * 100)
-                    logging.info(f"Histogram-based fuel: {fuel_from_histogram}% (dark: {dark_pixels_total}, bright: {bright_pixels_total})")
-                    
-                    # Use the most conservative estimate (lowest fuel reading) for safety
-                    final_fuel = min(fuel_from_brightness, fuel_from_histogram)
-                    logging.info(f"Final conservative fuel estimate: {final_fuel}%")
-                    return final_fuel
-                    
-            except Exception as e:
-                logging.error(f"Error in histogram analysis: {e}")
-            
-            # If all methods fail, return brightness-based estimate
-            return fuel_from_brightness
+            # FALLBACK: Use improved general analysis if precise bar detection fails
+            fuel_percentage = await self.analyze_fuel_area_improved(ui_area)
+            logging.info(f"FALLBACK fuel analysis: {fuel_percentage}%")
+            return fuel_percentage
             
         except Exception as e:
             logging.error(f"Critical error in fuel detection: {e}")
-            # Don't return cached values - return a safe default
+            return 50
+    
+    async def find_and_measure_fuel_bar(self, ui_area, total_width, total_height):
+        """Find the actual fuel bar and measure its black vs colored portions"""
+        try:
+            # Convert to different color spaces for analysis
+            gray = cv2.cvtColor(ui_area, cv2.COLOR_BGR2GRAY)
+            hsv = cv2.cvtColor(ui_area, cv2.COLOR_BGR2HSV)
+            
+            # METHOD 1: Look for horizontal rectangular structures (fuel bars)
+            # Find edges to locate bar boundaries
+            edges = cv2.Canny(gray, 50, 150)
+            
+            # Find contours that could be fuel bars
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            potential_fuel_bars = []
+            ui_height, ui_width = ui_area.shape[:2]
+            
+            for contour in contours:
+                # Get bounding rectangle
+                x, y, w, h = cv2.boundingRect(contour)
+                
+                # Filter for horizontal rectangles that could be fuel bars
+                aspect_ratio = w / h if h > 0 else 0
+                area = w * h
+                
+                # Fuel bars are typically: horizontal (wide), small height, decent size
+                if (aspect_ratio > 3.0 and  # Wide horizontal bar
+                    h >= 5 and h <= 30 and   # Reasonable height for a fuel bar
+                    w >= 50 and              # Minimum width to be significant
+                    area >= 250):            # Minimum area
+                    
+                    potential_fuel_bars.append({
+                        'rect': (x, y, w, h),
+                        'area': area,
+                        'aspect_ratio': aspect_ratio
+                    })
+            
+            # Sort by area (larger bars more likely to be the fuel bar)
+            potential_fuel_bars.sort(key=lambda x: x['area'], reverse=True)
+            
+            # Analyze the most promising fuel bar candidates
+            for bar_info in potential_fuel_bars[:3]:  # Check top 3 candidates
+                x, y, w, h = bar_info['rect']
+                
+                # Extract the fuel bar region
+                fuel_bar_region = ui_area[y:y+h, x:x+w]
+                
+                if fuel_bar_region.size == 0:
+                    continue
+                
+                # Measure fuel in this specific bar region
+                fuel_pct = await self.measure_fuel_in_bar(fuel_bar_region)
+                if fuel_pct is not None:
+                    logging.info(f"Found fuel bar at ({x},{y}) size {w}x{h}, fuel: {fuel_pct}%")
+                    return fuel_pct
+            
+            # METHOD 2: Scan bottom area horizontally for fuel bar patterns
+            return await self.scan_for_fuel_bar_pattern(ui_area)
+            
+        except Exception as e:
+            logging.error(f"Error in precise fuel bar detection: {e}")
+            return None
+    
+    async def measure_fuel_in_bar(self, fuel_bar_region):
+        """Measure fuel percentage in a specific bar region"""
+        try:
+            if fuel_bar_region.size == 0:
+                return None
+                
+            bar_height, bar_width = fuel_bar_region.shape[:2]
+            
+            # Define what constitutes "black/empty" vs "colored/fuel"
+            # Black/empty: Very dark colors (fuel is missing)
+            black_lower = np.array([0, 0, 0])
+            black_upper = np.array([40, 40, 40])  # Dark threshold
+            
+            # Create mask for black/empty areas
+            black_mask = cv2.inRange(fuel_bar_region, black_lower, black_upper)
+            
+            # Create mask for colored/fuel areas (anything not black)
+            fuel_lower = np.array([41, 41, 41])  # Above black threshold
+            fuel_upper = np.array([255, 255, 255])
+            fuel_mask = cv2.inRange(fuel_bar_region, fuel_lower, fuel_upper)
+            
+            # Count pixels
+            black_pixels = cv2.countNonZero(black_mask)
+            fuel_pixels = cv2.countNonZero(fuel_mask)
+            total_bar_pixels = black_pixels + fuel_pixels
+            
+            # Need sufficient pixels to be confident this is a fuel bar
+            if total_bar_pixels < (bar_width * bar_height * 0.5):  # At least 50% of bar should be fuel-related
+                return None
+            
+            if total_bar_pixels > 0:
+                fuel_percentage = int((fuel_pixels / total_bar_pixels) * 100)
+                fuel_percentage = max(0, min(100, fuel_percentage))
+                
+                logging.info(f"Bar measurement: {fuel_pixels} fuel pixels, {black_pixels} empty pixels, {fuel_percentage}% fuel")
+                return fuel_percentage
+            
+            return None
+            
+        except Exception as e:
+            logging.error(f"Error measuring fuel in bar: {e}")
+            return None
+    
+    async def scan_for_fuel_bar_pattern(self, ui_area):
+        """Scan the UI area looking for horizontal fuel bar patterns"""
+        try:
+            ui_height, ui_width = ui_area.shape[:2]
+            
+            # Scan each horizontal line in the bottom UI area
+            best_fuel_measurement = None
+            max_confidence = 0
+            
+            for y in range(5, ui_height - 5):  # Skip very top and bottom edges
+                # Extract horizontal line (with some height for robustness)
+                line_height = 8  # Examine several pixels vertically
+                if y + line_height >= ui_height:
+                    continue
+                    
+                line_region = ui_area[y:y+line_height, :]
+                
+                # Look for fuel bar characteristics in this line
+                fuel_pct, confidence = await self.analyze_horizontal_line_for_fuel(line_region)
+                
+                if confidence > max_confidence and fuel_pct is not None:
+                    max_confidence = confidence
+                    best_fuel_measurement = fuel_pct
+            
+            if max_confidence > 0.3:  # Need reasonable confidence
+                logging.info(f"Line scan found fuel: {best_fuel_measurement}% (confidence: {max_confidence:.2f})")
+                return best_fuel_measurement
+            
+            return None
+            
+        except Exception as e:
+            logging.error(f"Error in horizontal line scanning: {e}")
+            return None
+    
+    async def analyze_horizontal_line_for_fuel(self, line_region):
+        """Analyze a horizontal line to detect fuel bar patterns"""
+        try:
+            if line_region.size == 0:
+                return None, 0
+                
+            line_height, line_width = line_region.shape[:2]
+            
+            # Look for transitions from colored to black (fuel to empty)
+            # This is characteristic of a fuel bar
+            
+            # Convert to grayscale for edge detection
+            gray_line = cv2.cvtColor(line_region, cv2.COLOR_BGR2GRAY)
+            
+            # Find horizontal edges (transitions from fuel to empty)
+            horizontal_edges = cv2.Sobel(gray_line, cv2.CV_64F, 1, 0, ksize=3)
+            edge_strength = np.mean(np.abs(horizontal_edges))
+            
+            # Also check color variation - fuel bars have distinct colors
+            color_variance = np.var(line_region)
+            
+            # Calculate black vs colored ratio
+            black_mask = cv2.inRange(line_region, np.array([0,0,0]), np.array([40,40,40]))
+            fuel_mask = cv2.inRange(line_region, np.array([41,41,41]), np.array([255,255,255]))
+            
+            black_pixels = cv2.countNonZero(black_mask)
+            fuel_pixels = cv2.countNonZero(fuel_mask)
+            total_pixels = black_pixels + fuel_pixels
+            
+            if total_pixels > (line_width * line_height * 0.6):  # Most of line should be fuel-related
+                fuel_percentage = int((fuel_pixels / total_pixels) * 100) if total_pixels > 0 else 0
+                
+                # Confidence based on edge strength and color variance
+                confidence = min(1.0, (edge_strength / 50.0) + (color_variance / 10000))
+                
+                return fuel_percentage, confidence
+            
+            return None, 0
+            
+        except Exception as e:
+            logging.error(f"Error analyzing horizontal line: {e}")
+            return None, 0
+    
+    async def analyze_fuel_area_improved(self, ui_area):
+        """Improved fallback analysis when precise fuel bar detection fails"""
+        try:
+            # More focused analysis of the UI area
+            # Look for color patterns typical of fuel indicators
+            
+            # Method 1: Enhanced black vs colored analysis
+            # Define more precise thresholds for empty vs fuel
+            empty_lower = np.array([0, 0, 0])
+            empty_upper = np.array([35, 35, 35])  # Very dark = empty
+            
+            fuel_lower = np.array([50, 50, 50])   # Moderate brightness = fuel
+            fuel_upper = np.array([255, 255, 255])
+            
+            empty_mask = cv2.inRange(ui_area, empty_lower, empty_upper)
+            fuel_mask = cv2.inRange(ui_area, fuel_lower, fuel_upper)
+            
+            empty_pixels = cv2.countNonZero(empty_mask)
+            fuel_pixels = cv2.countNonZero(fuel_mask)
+            total_relevant = empty_pixels + fuel_pixels
+            
+            if total_relevant > 100:  # Need sufficient pixels
+                fuel_percentage = int((fuel_pixels / total_relevant) * 100)
+                fuel_percentage = max(0, min(100, fuel_percentage))
+                logging.info(f"Improved area analysis: {fuel_percentage}% (fuel: {fuel_pixels}, empty: {empty_pixels})")
+                return fuel_percentage
+            
+            # Method 2: Brightness-based fallback
+            gray_ui = cv2.cvtColor(ui_area, cv2.COLOR_BGR2GRAY)
+            mean_brightness = np.mean(gray_ui)
+            fuel_from_brightness = int(min(100, max(0, (mean_brightness / 255) * 100)))
+            
+            logging.info(f"Brightness fallback: {fuel_from_brightness}% (brightness: {mean_brightness})")
+            return fuel_from_brightness
+            
+        except Exception as e:
+            logging.error(f"Error in improved area analysis: {e}")
             return 50
     
     async def get_available_maps(self):
