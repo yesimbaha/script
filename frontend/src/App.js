@@ -93,6 +93,41 @@ function App() {
     };
   }, []);
 
+  // Fetch bot screenshot periodically
+  useEffect(() => {
+    let screenshotInterval;
+    
+    if (botStatus.running) {
+      const fetchScreenshot = async () => {
+        try {
+          const response = await axios.get(`${API}/bot/screenshot`);
+          if (response.data.success) {
+            setBotScreenshot(response.data.screenshot);
+            setScreenshotError(false);
+          }
+        } catch (error) {
+          setScreenshotError(true);
+          console.log('Screenshot fetch error:', error.message);
+        }
+      };
+      
+      // Fetch screenshot every 2 seconds when bot is running
+      screenshotInterval = setInterval(fetchScreenshot, 2000);
+      
+      // Fetch initial screenshot
+      fetchScreenshot();
+    } else {
+      setBotScreenshot(null);
+      setScreenshotError(false);
+    }
+    
+    return () => {
+      if (screenshotInterval) {
+        clearInterval(screenshotInterval);
+      }
+    };
+  }, [botStatus.running]);
+
   // Fetch initial bot status
   useEffect(() => {
     fetchBotStatus();
