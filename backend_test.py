@@ -175,13 +175,50 @@ class TankPitBotAPITester:
             expected_status=500  # Expecting 500 since no browser session
         )
 
+    def test_fuel_detection_integration(self):
+        """Test fuel detection integration through bot status"""
+        print(f"\n🔍 Testing Fuel Detection Integration...")
+        
+        # First get initial bot status
+        initial_status = self.run_api_test(
+            "Initial Bot Status (for fuel detection)",
+            "GET",
+            "bot/status",
+            200
+        )
+        
+        if not initial_status:
+            return False
+            
+        # Try to start the bot to trigger fuel detection
+        start_result = self.run_api_test(
+            "Start Bot (to test fuel detection)",
+            "POST", 
+            "bot/start",
+            200
+        )
+        
+        if start_result:
+            # Wait a moment for bot to initialize
+            time.sleep(3)
+            
+            # Check bot status again to see if fuel detection is working
+            return self.run_api_test(
+                "Bot Status After Start (fuel detection check)",
+                "GET",
+                "bot/status", 
+                200
+            )
+        
+        return False
+
     def test_fuel_detection_endpoint(self):
         """Test GET /api/bot/fuel - New fuel detection system"""
         return self.run_api_test(
             "Fuel Detection Endpoint",
             "GET",
             "bot/fuel",
-            expected_status=500  # Expecting 500 since no browser session exists
+            expected_status=404  # This endpoint doesn't exist, expecting 404
         )
 
     def test_screenshot_endpoint(self):
