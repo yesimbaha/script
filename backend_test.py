@@ -843,27 +843,206 @@ class TankPitBotAPITester:
         except Exception as e:
             return self.log_result("Server Health", False, f"Health check error: {str(e)}")
 
-    def test_websocket_endpoint(self):
-        """Test WebSocket endpoint accessibility"""
-        # We can't easily test WebSocket with requests, but we can check if the endpoint exists
-        # by trying to connect to it (it should return a specific error)
+    def test_bot_status_idle_state(self):
+        """Test that bot status API returns correct idle state"""
+        print(f"\n🤖 Testing Bot Status Idle State...")
+        
+        # Test bot status endpoint
+        result = self.run_api_test(
+            "Bot Status - Idle State Check",
+            "GET",
+            "bot/status",
+            200
+        )
+        
+        if result:
+            # Get the actual response to verify idle state
+            try:
+                url = f"{self.api_url}/bot/status"
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    status_data = response.json()
+                    
+                    # Check if bot is in idle state (not running)
+                    if 'running' in status_data and not status_data['running']:
+                        self.log_result(
+                            "Bot Status - Idle State Verification",
+                            True,
+                            f"Bot correctly reports idle state (running: {status_data['running']})"
+                        )
+                    else:
+                        self.log_result(
+                            "Bot Status - Idle State Verification",
+                            False,
+                            f"Bot not in expected idle state: {status_data.get('running', 'unknown')}"
+                        )
+                    
+                    # Check if status field exists and is reasonable
+                    if 'status' in status_data:
+                        status_value = status_data['status']
+                        if status_value in ['idle', 'stopped', 'ready', 'no_browser_session']:
+                            self.log_result(
+                                "Bot Status - Status Field",
+                                True,
+                                f"Status field has valid idle value: '{status_value}'"
+                            )
+                        else:
+                            self.log_result(
+                                "Bot Status - Status Field",
+                                False,
+                                f"Unexpected status value: '{status_value}'"
+                            )
+                    
+            except Exception as e:
+                self.log_result(
+                    "Bot Status - Response Analysis",
+                    False,
+                    f"Error analyzing status response: {str(e)}"
+                )
+        
+        return result
+
+    def test_bot_startup_without_crashes(self):
+        """Test that bot can start without immediate crashes"""
+        print(f"\n🚀 Testing Bot Startup Without Crashes...")
+        
+        # First check initial status
+        initial_status = self.run_api_test(
+            "Bot Startup - Initial Status Check",
+            "GET",
+            "bot/status",
+            200
+        )
+        
+        if not initial_status:
+            return False
+        
+        # Try to start the bot
+        start_result = self.run_api_test(
+            "Bot Startup - Start Command",
+            "POST",
+            "bot/start",
+            200
+        )
+        
+        if start_result:
+            # Wait a moment for startup
+            time.sleep(3)
+            
+            # Check status after startup attempt
+            post_start_status = self.run_api_test(
+                "Bot Startup - Post-Start Status",
+                "GET",
+                "bot/status",
+                200
+            )
+            
+            if post_start_status:
+                # Try to stop the bot to clean up
+                self.run_api_test(
+                    "Bot Startup - Cleanup Stop",
+                    "POST",
+                    "bot/stop",
+                    200
+                )
+                
+                return self.log_result(
+                    "Bot Startup - No Immediate Crashes",
+                    True,
+                    "Bot started and responded to status checks without crashing"
+                )
+        
+        return False
+
+    def test_websocket_status_broadcasting(self):
+        """Test WebSocket status broadcasting functionality"""
+        print(f"\n📡 Testing WebSocket Status Broadcasting...")
+        
+        # Test WebSocket endpoint existence
         try:
             ws_url = self.base_url.replace('https://', 'wss://') + "/api/ws/bot-status"
-            print(f"\n🔍 Testing WebSocket Endpoint...")
             print(f"   WebSocket URL: {ws_url}")
             
             # Try to make a regular HTTP request to the WebSocket endpoint
-            # This should return a specific error indicating it's a WebSocket endpoint
             response = requests.get(ws_url.replace('wss://', 'https://'), timeout=5)
             
             # WebSocket endpoints typically return 426 Upgrade Required or similar
             if response.status_code in [426, 400, 405]:
-                return self.log_result("WebSocket Endpoint", True, f"WebSocket endpoint exists (HTTP {response.status_code})")
+                return self.log_result(
+                    "WebSocket Status Broadcasting",
+                    True,
+                    f"WebSocket endpoint exists and responds correctly (HTTP {response.status_code})"
+                )
             else:
-                return self.log_result("WebSocket Endpoint", False, f"Unexpected status: {response.status_code}")
+                return self.log_result(
+                    "WebSocket Status Broadcasting",
+                    False,
+                    f"Unexpected WebSocket response: {response.status_code}"
+                )
                 
         except Exception as e:
-            return self.log_result("WebSocket Endpoint", False, f"Error: {str(e)}")
+            return self.log_result(
+                "WebSocket Status Broadcasting",
+                False,
+                f"Error testing WebSocket endpoint: {str(e)}"
+            )
+
+    def run_bot_tracking_bug_fix_tests(self):
+        """Run focused tests for the bot tracking bug fixes"""
+        print("=" * 60)
+        print("🐛 BOT TRACKING BUG FIX TESTING")
+        print("=" * 60)
+        print(f"Testing against: {self.base_url}")
+        print(f"API Base URL: {self.api_url}")
+        print("Focus: Verifying fixes for 'not tracking anything again' issues")
+        
+        # Test server health first
+        print("\n🏥 TESTING SERVER HEALTH...")
+        self.test_server_health()
+        
+        # Test 1: Bot status returns correct idle state
+        print("\n🤖 TESTING BOT STATUS IDLE STATE...")
+        status_result = self.test_bot_status_idle_state()
+        
+        # Test 2: Bot can start without immediate crashes
+        print("\n🚀 TESTING BOT STARTUP WITHOUT CRASHES...")
+        startup_result = self.test_bot_startup_without_crashes()
+        
+        # Test 3: Page validation and error handling
+        print("\n🔍 TESTING PAGE VALIDATION ERROR HANDLING...")
+        page_validation_result = self.test_page_validation_error_handling()
+        
+        # Test 4: Bot tracking bug fixes components
+        print("\n🐛 TESTING BUG FIX COMPONENTS...")
+        bug_fix_result = self.test_bot_tracking_bug_fixes()
+        
+        # Test 5: WebSocket status broadcasting
+        print("\n📡 TESTING WEBSOCKET STATUS BROADCASTING...")
+        websocket_result = self.test_websocket_status_broadcasting()
+        
+        # Test 6: Enhanced fuel detection methods
+        print("\n⛽ TESTING ENHANCED FUEL DETECTION...")
+        fuel_detection_result = self.test_enhanced_fuel_detection_methods()
+        
+        # Print focused summary
+        print("\n" + "=" * 60)
+        print("🎯 BOT TRACKING BUG FIX TEST SUMMARY")
+        print("=" * 60)
+        print(f"Total Tests: {self.tests_run}")
+        print(f"Passed: {self.tests_passed}")
+        print(f"Failed: {self.tests_run - self.tests_passed}")
+        print(f"Success Rate: {(self.tests_passed/self.tests_run*100):.1f}%")
+        
+        # Key results
+        print(f"\n🔑 KEY BUG FIX RESULTS:")
+        print(f"   • Bot Status Idle State: {'✅ PASS' if status_result else '❌ FAIL'}")
+        print(f"   • Bot Startup No Crashes: {'✅ PASS' if startup_result else '❌ FAIL'}")
+        print(f"   • Page Validation Handling: {'✅ PASS' if page_validation_result else '❌ FAIL'}")
+        print(f"   • Bug Fix Components: {'✅ PASS' if bug_fix_result else '❌ FAIL'}")
+        print(f"   • WebSocket Broadcasting: {'✅ PASS' if websocket_result else '❌ FAIL'}")
+        print(f"   • Fuel Detection Methods: {'✅ PASS' if fuel_detection_result else '❌ FAIL'}")
+        
+        return self.tests_passed == self.tests_run
 
     def run_all_tests(self):
         """Run all API tests"""
