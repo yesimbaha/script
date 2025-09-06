@@ -572,13 +572,13 @@ class TankpitBot:
             return False
     
     async def detect_fuel_level(self):
-        """Detect current fuel level by precisely measuring the fuel bar at the bottom"""
+        """Detect current fuel level by measuring the fuel gauge at the bottom - black vs colored pixels"""
         try:
             if not self.page:
                 logging.error("No page available for fuel detection")
                 return 50
                 
-            # ALWAYS take a fresh screenshot for real-time detection
+            # Take a fresh screenshot for real-time detection
             screenshot = await self.page.screenshot()
             
             # Convert to OpenCV format  
@@ -593,33 +593,76 @@ class TankpitBot:
             height, width = img.shape[:2]
             logging.info(f"Screenshot dimensions: {width}x{height}")
             
-            # Focus on the bottom area where the fuel bar is located
-            # Narrow down to the exact area where fuel bars typically appear
-            bottom_ui_start = int(height * 0.85)  # Bottom 15% for more precision
-            ui_area = img[bottom_ui_start:height, :]
+            # Focus on the bottom area where the fuel gauge is located
+            # Look specifically at the bottom UI area for the fuel gauge
+            bottom_ui_start = int(height * 0.85)  # Bottom 15% of screen
+            fuel_gauge_area = img[bottom_ui_start:height, :]
             
-            if ui_area.size == 0:
-                logging.error("UI area is empty")
+            if fuel_gauge_area.size == 0:
+                logging.error("Fuel gauge area is empty")
                 return 50
             
-            # NEW APPROACH: Find the actual fuel bar by looking for horizontal rectangles
-            fuel_percentage = await self.find_and_measure_fuel_bar(ui_area, width, height)
-            if fuel_percentage is not None:
-                logging.info(f"PRECISE fuel bar measurement: {fuel_percentage}%")
-                # Save debug screenshot occasionally
-                import random
-                if random.randint(1, 15) == 1:  # Save less frequently
-                    await self.page.screenshot(path=f"/tmp/fuel_precise_{fuel_percentage}pct.png")
-                return fuel_percentage
+            # YOUR ORIGINAL IDEA: Measure black vs colored pixels in the fuel gauge
+            fuel_percentage = await self.measure_fuel_gauge_simple(fuel_gauge_area)
             
-            # FALLBACK: Use improved general analysis if precise bar detection fails
-            fuel_percentage = await self.analyze_fuel_area_improved(ui_area)
-            logging.info(f"FALLBACK fuel analysis: {fuel_percentage}%")
-            return fuel_percentage
+            if fuel_percentage is not None:
+                logging.info(f"FUEL GAUGE measurement: {fuel_percentage}%")
+                return fuel_percentage
+            else:
+                logging.warning("Could not measure fuel gauge, returning default")
+                return 50
             
         except Exception as e:
             logging.error(f"Critical error in fuel detection: {e}")
             return 50
+    
+    async def measure_fuel_gauge_simple(self, fuel_gauge_area):
+        """Simple fuel gauge measurement - your original idea: black (empty) vs colored (fuel) pixels"""
+        try:
+            # Get dimensions of the fuel gauge area
+            gauge_height, gauge_width = fuel_gauge_area.shape[:2]
+            
+            # Define what constitutes "black/empty" vs "colored/fuel" 
+            # Black/empty pixels (fuel is missing from these areas)
+            black_lower = np.array([0, 0, 0])        # Pure black
+            black_upper = np.array([50, 50, 50])     # Dark gray (empty fuel)
+            
+            # Create mask for black/empty areas
+            black_mask = cv2.inRange(fuel_gauge_area, black_lower, black_upper)
+            
+            # Everything else is considered "colored" (fuel remaining)
+            colored_lower = np.array([51, 51, 51])   # Above black threshold
+            colored_upper = np.array([255, 255, 255]) # All colors
+            colored_mask = cv2.inRange(fuel_gauge_area, colored_lower, colored_upper)
+            
+            # Count pixels
+            black_pixels = cv2.countNonZero(black_mask)
+            colored_pixels = cv2.countNonZero(colored_mask)
+            total_relevant_pixels = black_pixels + colored_pixels
+            
+            # Need some pixels to analyze
+            if total_relevant_pixels < 100:
+                logging.warning("Not enough relevant pixels in fuel gauge area")
+                return None
+            
+            # Calculate fuel percentage: colored pixels = fuel remaining
+            fuel_percentage = int((colored_pixels / total_relevant_pixels) * 100)
+            fuel_percentage = max(0, min(100, fuel_percentage))  # Clamp to 0-100%
+            
+            logging.info(f"SIMPLE fuel gauge: {colored_pixels} fuel pixels, {black_pixels} empty pixels = {fuel_percentage}%")
+            
+            # Save debug screenshot occasionally to verify we're looking at the right area
+            import random
+            if random.randint(1, 20) == 1:  # 5% chance
+                debug_path = f"/tmp/fuel_gauge_debug_{fuel_percentage}pct.png"
+                cv2.imwrite(debug_path, fuel_gauge_area)
+                logging.info(f"Saved fuel gauge debug image: {debug_path}")
+            
+            return fuel_percentage
+            
+        except Exception as e:
+            logging.error(f"Error in simple fuel gauge measurement: {e}")
+            return None
     
     async def find_and_measure_fuel_bar(self, ui_area, total_width, total_height):
         """Find the actual fuel bar and measure its black vs colored portions"""
