@@ -3212,7 +3212,7 @@ class TankPitBotAPITester:
         
         # Test WebSocket
         print("\n🔌 TESTING WEBSOCKET ENDPOINT...")
-        self.test_websocket_endpoint()
+        self.test_websocket_status_broadcasting()
         
         # Print summary
         self.print_summary()
