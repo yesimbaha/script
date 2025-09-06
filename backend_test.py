@@ -730,6 +730,19 @@ class TankPitBotAPITester:
         self.test_screenshot_endpoint()
         self.test_fuel_detection_integration()
         
+        # Test ENHANCED BOT SEQUENCES (NEW)
+        print("\n🤖 TESTING ENHANCED BOT SEQUENCES...")
+        self.test_enhanced_bot_sequences()
+        self.test_enhanced_fuel_detection_methods()
+        
+        # Test OpenCV Integration
+        print("\n🖼️  TESTING OPENCV INTEGRATION...")
+        self.test_opencv_integration()
+        
+        # Test Bot Cycle Logic
+        print("\n🔄 TESTING BOT CYCLE LOGIC...")
+        self.test_bot_cycle_logic()
+        
         # Test bot control endpoints
         print("\n🤖 TESTING BOT CONTROL ENDPOINTS...")
         self.test_start_bot()
