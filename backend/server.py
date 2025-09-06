@@ -529,236 +529,129 @@ class TankpitBot:
             return False
     
     async def detect_fuel_level(self):
-        """Detect current fuel level from tankpit.com interface"""
+        """Detect current fuel level from tankpit.com interface - REAL-TIME, NO CACHING"""
         try:
             if not self.page:
                 logging.error("No page available for fuel detection")
                 return 50
                 
-            # Strategy 1: Look for the fuel/HP bar in the bottom UI panel (based on screenshot)
-            try:
-                # The fuel bar appears to be in the bottom UI area, let's look for progress bars there
-                fuel_bar_selectors = [
-                    # Look for progress bars, bars, or similar elements
-                    'div[style*="width"][style*="%"]',  # Divs with width percentages
-                    '.bar', '.progress', '.fuel', '.health', '.hp',
-                    'div[class*="bar"]', 'div[class*="fuel"]', 'div[class*="health"]',
-                    # Canvas elements that might contain the bar
-                    'canvas'
-                ]
-                
-                for selector in fuel_bar_selectors:
-                    try:
-                        elements = await self.page.query_selector_all(selector)
-                        for element in elements:
-                            if not await element.is_visible():
-                                continue
-                                
-                            # Check if element is in the bottom portion of the screen
-                            bounding_box = await element.bounding_box()
-                            if bounding_box:
-                                viewport_height = self.page.viewport_size["height"]
-                                # Only consider elements in the bottom 30% of the screen
-                                if bounding_box["y"] < viewport_height * 0.7:
-                                    continue
-                                    
-                                # Check for width-based percentage (common for fuel bars)
-                                style = await element.get_attribute('style')
-                                if style and 'width:' in style:
-                                    width_match = re.search(r'width:\s*(\d+)%', style)
-                                    if width_match:
-                                        fuel_percentage = int(width_match.group(1))
-                                        if 0 <= fuel_percentage <= 100:
-                                            logging.info(f"Found fuel level {fuel_percentage}% from element style: {style}")
-                                            return fuel_percentage
-                                            
-                    except Exception as e:
-                        continue
-            except Exception as e:
-                logging.error(f"Error in Strategy 1 fuel detection: {e}")
+            # ALWAYS take a fresh screenshot for real-time detection
+            screenshot = await self.page.screenshot()
             
-            # Strategy 2: Take screenshot and analyze the fuel bar area visually
+            # Convert to OpenCV format  
+            nparr = np.frombuffer(screenshot, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                logging.error("Failed to decode screenshot for fuel detection")
+                return 50
+                
+            # Get image dimensions
+            height, width = img.shape[:2]
+            
+            # Focus on the bottom area where the fuel bar is located
+            # Use the exact area from your screenshot - bottom UI area
+            bottom_ui_start = int(height * 0.8)  # Bottom 20% more focused
+            ui_area = img[bottom_ui_start:height, :]
+            
+            if ui_area.size == 0:
+                logging.error("UI area is empty")
+                return 50
+            
+            # Advanced color analysis for real-time fuel detection
+            # Look for tank color (health remaining) vs black (health lost)
+            
+            # Convert to different color spaces for better analysis
+            hsv = cv2.cvtColor(ui_area, cv2.COLOR_BGR2HSV)
+            gray = cv2.cvtColor(ui_area, cv2.COLOR_BGR2GRAY)
+            
+            # Method 1: Detect black pixels (damaged/lost health)
+            # Use multiple thresholds to catch all variations of "empty" health
+            black_masks = []
+            
+            # Very dark pixels (pure black to dark gray)
+            black_mask1 = cv2.inRange(ui_area, np.array([0, 0, 0]), np.array([30, 30, 30]))
+            black_masks.append(black_mask1)
+            
+            # Dark gray (slightly damaged areas)
+            black_mask2 = cv2.inRange(ui_area, np.array([31, 31, 31]), np.array([60, 60, 60]))
+            black_masks.append(black_mask2)
+            
+            # Combine all black/dark masks
+            combined_black_mask = black_mask1
+            for mask in black_masks[1:]:
+                combined_black_mask = cv2.bitwise_or(combined_black_mask, mask)
+            
+            # Method 2: Detect colored pixels (remaining health)
+            # This should be any color that's not black/dark (tank colors)
+            colored_lower = np.array([70, 70, 70])    # Above dark threshold
+            colored_upper = np.array([255, 255, 255]) # All bright colors
+            colored_mask = cv2.inRange(ui_area, colored_lower, colored_upper)
+            
+            # Remove any overlap between colored and black masks
+            colored_only = cv2.bitwise_and(colored_mask, cv2.bitwise_not(combined_black_mask))
+            
+            # Count pixels
+            black_pixels = cv2.countNonZero(combined_black_mask)
+            colored_pixels = cv2.countNonZero(colored_only)
+            total_relevant_pixels = black_pixels + colored_pixels
+            
+            if total_relevant_pixels > 10:  # Need some pixels to analyze
+                fuel_percentage = int((colored_pixels / total_relevant_pixels) * 100)
+                fuel_percentage = max(0, min(100, fuel_percentage))
+                
+                logging.info(f"REAL-TIME fuel detection: {fuel_percentage}% (colored: {colored_pixels}, black: {black_pixels}, total: {total_relevant_pixels})")
+                
+                # Save debug screenshot every few detections to help troubleshoot
+                import random
+                if random.randint(1, 10) == 1:  # 10% chance
+                    await self.page.screenshot(path=f"/tmp/fuel_debug_{fuel_percentage}pct.png")
+                
+                return fuel_percentage
+            
+            # Method 3: Alternative analysis if method 1-2 don't find enough pixels
+            # Look at the overall brightness of the bottom UI
+            gray_ui = cv2.cvtColor(ui_area, cv2.COLOR_BGR2GRAY)
+            
+            # Calculate average brightness
+            mean_brightness = np.mean(gray_ui)
+            
+            # Convert brightness to fuel percentage (this is rough but better than nothing)
+            # Dark = low fuel, Bright = high fuel
+            fuel_from_brightness = int(min(100, max(0, (mean_brightness / 255) * 100)))
+            
+            logging.info(f"Brightness-based fuel estimate: {fuel_from_brightness}% (mean brightness: {mean_brightness})")
+            
+            # Method 4: Histogram analysis for more accurate detection
             try:
-                # Take screenshot
-                screenshot = await self.page.screenshot()
+                # Analyze color histogram in the UI area
+                hist_b = cv2.calcHist([ui_area], [0], None, [256], [0, 256])
+                hist_g = cv2.calcHist([ui_area], [1], None, [256], [0, 256])  
+                hist_r = cv2.calcHist([ui_area], [2], None, [256], [0, 256])
                 
-                # Convert to OpenCV format
-                nparr = np.frombuffer(screenshot, np.uint8)
-                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                # Count dark pixels (0-50 intensity) vs brighter pixels (51-255)
+                dark_pixels_total = np.sum(hist_b[0:51]) + np.sum(hist_g[0:51]) + np.sum(hist_r[0:51])
+                bright_pixels_total = np.sum(hist_b[51:256]) + np.sum(hist_g[51:256]) + np.sum(hist_r[51:256])
                 
-                if img is None:
-                    raise Exception("Failed to decode screenshot")
-                
-                # Get image dimensions
-                height, width = img.shape[:2]
-                
-                # Focus on a smaller area where the fuel bar is likely located
-                # Based on typical game UI, health bars are usually in bottom-left or bottom-center
-                # Let's try a smaller, more targeted area
-                
-                # Try multiple regions to find the fuel bar
-                regions_to_check = [
-                    # Bottom-left area (common for health bars)
-                    {
-                        "name": "bottom-left",
-                        "y_start": int(height * 0.85),
-                        "y_end": height,
-                        "x_start": 0,
-                        "x_end": int(width * 0.3)
-                    },
-                    # Bottom-center area
-                    {
-                        "name": "bottom-center", 
-                        "y_start": int(height * 0.85),
-                        "y_end": height,
-                        "x_start": int(width * 0.35),
-                        "x_end": int(width * 0.65)
-                    },
-                    # Bottom-right area
-                    {
-                        "name": "bottom-right",
-                        "y_start": int(height * 0.85), 
-                        "y_end": height,
-                        "x_start": int(width * 0.7),
-                        "x_end": width
-                    }
-                ]
-                
-                best_fuel_percentage = None
-                best_region = None
-                
-                for region in regions_to_check:
-                    try:
-                        # Extract the region
-                        ui_area = img[region["y_start"]:region["y_end"], region["x_start"]:region["x_end"]]
-                        
-                        if ui_area.size == 0:
-                            continue
-                            
-                        # Look for black pixels (depleted health) - very dark pixels
-                        black_lower = np.array([0, 0, 0])
-                        black_upper = np.array([40, 40, 40])  # Very dark
-                        black_mask = cv2.inRange(ui_area, black_lower, black_upper)
-                        
-                        # Look for colored pixels (remaining health) - exclude very dark and very light
-                        colored_lower = np.array([50, 50, 50])   # Not too dark
-                        colored_upper = np.array([200, 200, 200]) # Not too bright
-                        colored_mask = cv2.inRange(ui_area, colored_lower, colored_upper)
-                        
-                        # Remove black pixels from colored mask to avoid overlap
-                        colored_only = cv2.bitwise_and(colored_mask, cv2.bitwise_not(black_mask))
-                        
-                        # Count pixels
-                        black_pixels = cv2.countNonZero(black_mask)
-                        colored_pixels = cv2.countNonZero(colored_only)
-                        total_bar_pixels = black_pixels + colored_pixels
-                        
-                        # Only consider this region if it has a reasonable bar size
-                        if 20 <= total_bar_pixels <= 5000:  # Reasonable fuel bar size range
-                            fuel_percentage = 100  # Default to full if no black pixels
-                            if total_bar_pixels > 0:
-                                fuel_percentage = int((colored_pixels / total_bar_pixels) * 100)
-                                fuel_percentage = max(0, min(100, fuel_percentage))
-                                
-                            # Prefer regions with more balanced ratios (likely actual fuel bars)
-                            if black_pixels > 0 and colored_pixels > 0:  # Has both colors
-                                if best_fuel_percentage is None or abs(fuel_percentage - 50) < abs(best_fuel_percentage - 50):
-                                    best_fuel_percentage = fuel_percentage
-                                    best_region = region["name"]
-                                    logging.info(f"Found potential fuel bar in {region['name']}: {fuel_percentage}% (colored: {colored_pixels}, black: {black_pixels})")
-                            elif colored_pixels > black_pixels and colored_pixels > 10:  # Mostly colored (high health)
-                                if best_fuel_percentage is None or fuel_percentage > best_fuel_percentage:
-                                    best_fuel_percentage = fuel_percentage
-                                    best_region = region["name"]
-                                    logging.info(f"Found high-health bar in {region['name']}: {fuel_percentage}% (colored: {colored_pixels}, black: {black_pixels})")
-                                    
-                    except Exception as e:
-                        continue
-                
-                if best_fuel_percentage is not None:
-                    logging.info(f"Best fuel detection from {best_region}: {best_fuel_percentage}%")
-                    return best_fuel_percentage
+                if dark_pixels_total + bright_pixels_total > 0:
+                    fuel_from_histogram = int((bright_pixels_total / (dark_pixels_total + bright_pixels_total)) * 100)
+                    logging.info(f"Histogram-based fuel: {fuel_from_histogram}% (dark: {dark_pixels_total}, bright: {bright_pixels_total})")
+                    
+                    # Use the most conservative estimate (lowest fuel reading) for safety
+                    final_fuel = min(fuel_from_brightness, fuel_from_histogram)
+                    logging.info(f"Final conservative fuel estimate: {final_fuel}%")
+                    return final_fuel
                     
             except Exception as e:
-                logging.error(f"Error in visual fuel detection: {e}")
+                logging.error(f"Error in histogram analysis: {e}")
             
-            # Strategy 3: Look for numerical fuel indicators in the UI
-            try:
-                # Look for text elements that might show fuel numbers
-                page_content = await self.page.content()
-                
-                # Search for fuel-related patterns in the HTML
-                fuel_patterns = [
-                    r'fuel["\s:]*(\d+)',
-                    r'hp["\s:]*(\d+)', 
-                    r'health["\s:]*(\d+)',
-                    r'energy["\s:]*(\d+)',
-                    # Look for numbers that might be percentages
-                    r'(\d+)%',
-                    # Look for fractions like "75/100"
-                    r'(\d+)/100'
-                ]
-                
-                for pattern in fuel_patterns:
-                    matches = re.findall(pattern, page_content, re.IGNORECASE)
-                    for match in matches:
-                        fuel_value = int(match)
-                        if 0 <= fuel_value <= 100:
-                            logging.info(f"Found potential fuel level {fuel_value}% in page content")
-                            return fuel_value
-                        elif fuel_value > 100:
-                            # Might be out of a larger number, convert to percentage
-                            normalized = min(100, fuel_value // 10)
-                            if normalized > 0:
-                                logging.info(f"Normalized fuel level to {normalized}% from value {fuel_value}")
-                                return normalized
-                                
-            except Exception as e:
-                logging.error(f"Error in text-based fuel detection: {e}")
-            
-            # Strategy 4: Try JavaScript evaluation for game state
-            try:
-                js_fuel_checks = [
-                    # Common game state variables
-                    "window.gameState && window.gameState.player && window.gameState.player.fuel",
-                    "window.player && window.player.health",
-                    "window.tank && window.tank.fuel", 
-                    "window.game && window.game.fuel",
-                    # Try to find elements with fuel-related IDs/classes
-                    "document.querySelector('[id*=\"fuel\"], [class*=\"fuel\"], [id*=\"health\"], [class*=\"health\"]') && document.querySelector('[id*=\"fuel\"], [class*=\"fuel\"], [id*=\"health\"], [class*=\"health\"]').textContent"
-                ]
-                
-                for js_check in js_fuel_checks:
-                    try:
-                        result = await self.page.evaluate(js_check)
-                        if result:
-                            if isinstance(result, (int, float)) and 0 <= result <= 100:
-                                logging.info(f"Found fuel level {int(result)}% via JavaScript")
-                                return int(result)
-                            elif isinstance(result, str):
-                                numbers = re.findall(r'(\d+)', result)
-                                if numbers:
-                                    fuel_val = int(numbers[0])
-                                    if 0 <= fuel_val <= 100:
-                                        logging.info(f"Extracted fuel level {fuel_val}% from JS result")
-                                        return fuel_val
-                    except:
-                        continue
-                        
-            except Exception as e:
-                logging.error(f"Error in JavaScript fuel detection: {e}")
-            
-            # If no fuel detected, save debug screenshot and return a reasonable default
-            await self.page.screenshot(path="/tmp/tankpit_fuel_debug_detailed.png")
-            logging.warning("Could not detect fuel level with any method, using default value")
-            
-            # Return a reasonable default or last known value
-            last_fuel = bot_state.get("current_fuel", 75)
-            return max(25, last_fuel)  # Ensure minimum 25% to prevent constant shield activation
+            # If all methods fail, return brightness-based estimate
+            return fuel_from_brightness
             
         except Exception as e:
-            logging.error(f"Failed to detect fuel level: {e}")
-            return 75  # Safe default
+            logging.error(f"Critical error in fuel detection: {e}")
+            # Don't return cached values - return a safe default
+            return 50
     
     async def get_available_maps(self):
         """Get list of available maps/game modes"""
