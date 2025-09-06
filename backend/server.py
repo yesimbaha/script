@@ -1146,11 +1146,14 @@ class TankpitBot:
         
         while self.running:
             try:
-                # Update fuel level
+                # Update fuel level AND position
                 current_fuel = await self.detect_fuel_level()
-                bot_state["current_fuel"] = current_fuel
+                current_position = await self.detect_position()
                 
-                # Broadcast status update
+                bot_state["current_fuel"] = current_fuel
+                bot_state["position"] = current_position
+                
+                # Broadcast status update EVERY cycle for real-time UI updates
                 await self.broadcast_status()
                 
                 # Check if shields need activation (10% threshold)
@@ -1158,29 +1161,34 @@ class TankpitBot:
                     await self.activate_shields()
                     bot_state["shields_active"] = True
                     bot_state["status"] = "shields_activated"
+                    await self.broadcast_status()  # Immediate update
                 
                 # Check if we need to perform screen maintenance
                 # This is the core equipment maintenance logic
                 if current_fuel <= bot_state["settings"]["refuel_threshold"] or await self.should_perform_screen_maintenance():
                     logging.info("Performing screen maintenance cycle")
                     bot_state["status"] = "screen_maintenance"
+                    await self.broadcast_status()  # Immediate update
                     
                     # Perform complete screen entry sequence
                     await self.perform_screen_entry_sequence()
+                    await self.broadcast_status()  # After maintenance update
                     
                     # After maintenance, check if we need to move to new screen for more resources
                     current_fuel = await self.detect_fuel_level()
                     if current_fuel <= bot_state["settings"]["refuel_threshold"]:
                         # No fuel available on current screen, need to move
                         bot_state["status"] = "searching_new_area"
-                        if await self.navigate_to_new_area():
-                            # Perform screen entry sequence on new area
-                            await self.perform_screen_entry_sequence()
+                        await self.broadcast_status()  # Immediate update
+                        # Note: navigate_to_new_area was replaced with detect_position
+                        # For now, just perform another screen entry sequence
+                        await self.perform_screen_entry_sequence()
                 
                 # If fuel is above safe threshold (85%), maintain position but stay alert
                 elif current_fuel >= bot_state["settings"]["safe_threshold"]:
                     bot_state["status"] = "stationary_maintaining"
                     bot_state["shields_active"] = False
+                    await self.broadcast_status()  # Immediate update
                     
                     # Even when stationary, occasionally check for new equipment
                     # This simulates staying alert for new spawns
