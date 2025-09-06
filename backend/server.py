@@ -572,7 +572,7 @@ class TankpitBot:
             return False
     
     async def detect_fuel_level(self):
-        """Detect current fuel level by measuring the fuel gauge at the bottom - black vs colored pixels"""
+        """Detect current fuel level by measuring the fuel gauge - IMPROVED LOCATION DETECTION"""
         try:
             if not self.page:
                 logging.error("No page available for fuel detection")
@@ -593,75 +593,130 @@ class TankpitBot:
             height, width = img.shape[:2]
             logging.info(f"Screenshot dimensions: {width}x{height}")
             
-            # Focus on the bottom area where the fuel gauge is located
-            # Look specifically at the bottom UI area for the fuel gauge
+            # Try multiple areas to find the fuel gauge
+            # Method 1: Bottom UI area (original)
             bottom_ui_start = int(height * 0.85)  # Bottom 15% of screen
             fuel_gauge_area = img[bottom_ui_start:height, :]
+            fuel_percentage = await self.measure_fuel_gauge_simple(fuel_gauge_area, "bottom_15%")
             
-            if fuel_gauge_area.size == 0:
-                logging.error("Fuel gauge area is empty")
-                return 50
-            
-            # YOUR ORIGINAL IDEA: Measure black vs colored pixels in the fuel gauge
-            fuel_percentage = await self.measure_fuel_gauge_simple(fuel_gauge_area)
-            
-            if fuel_percentage is not None:
-                logging.info(f"FUEL GAUGE measurement: {fuel_percentage}%")
+            if fuel_percentage is not None and fuel_percentage > 0:
+                logging.info(f"FUEL GAUGE (bottom 15%): {fuel_percentage}%")
                 return fuel_percentage
-            else:
-                logging.warning("Could not measure fuel gauge, returning default")
-                return 50
+            
+            # Method 2: Different bottom area - maybe it's higher up
+            bottom_ui_start = int(height * 0.75)  # Bottom 25% of screen
+            fuel_gauge_area = img[bottom_ui_start:height, :]
+            fuel_percentage = await self.measure_fuel_gauge_simple(fuel_gauge_area, "bottom_25%")
+            
+            if fuel_percentage is not None and fuel_percentage > 0:
+                logging.info(f"FUEL GAUGE (bottom 25%): {fuel_percentage}%")
+                return fuel_percentage
+            
+            # Method 3: Try right side of screen (some games have fuel gauge on side)
+            right_ui_start = int(width * 0.8)  # Right 20% of screen
+            fuel_gauge_area = img[:, right_ui_start:width]
+            fuel_percentage = await self.measure_fuel_gauge_simple(fuel_gauge_area, "right_20%")
+            
+            if fuel_percentage is not None and fuel_percentage > 0:
+                logging.info(f"FUEL GAUGE (right side): {fuel_percentage}%")
+                return fuel_percentage
+            
+            # Method 4: Try specific coordinates where fuel gauge might be
+            # Based on 1280x720 screenshot, try middle-right area
+            fuel_gauge_area = img[int(height*0.6):int(height*0.9), int(width*0.7):width]
+            fuel_percentage = await self.measure_fuel_gauge_simple(fuel_gauge_area, "middle_right")
+            
+            if fuel_percentage is not None and fuel_percentage > 0:
+                logging.info(f"FUEL GAUGE (middle-right): {fuel_percentage}%")
+                return fuel_percentage
+            
+            # If all methods fail, return a reasonable default
+            logging.warning("Could not locate fuel gauge in any expected area")
+            return 50
             
         except Exception as e:
             logging.error(f"Critical error in fuel detection: {e}")
             return 50
     
-    async def measure_fuel_gauge_simple(self, fuel_gauge_area):
-        """Simple fuel gauge measurement - your original idea: black (empty) vs colored (fuel) pixels"""
+    async def measure_fuel_gauge_simple(self, fuel_gauge_area, location_name="unknown"):
+        """Simple fuel gauge measurement with location info for debugging"""
         try:
+            if fuel_gauge_area.size == 0:
+                logging.warning(f"Fuel gauge area ({location_name}) is empty")
+                return None
+                
             # Get dimensions of the fuel gauge area
             gauge_height, gauge_width = fuel_gauge_area.shape[:2]
             
-            # Define what constitutes "black/empty" vs "colored/fuel" 
-            # Black/empty pixels (fuel is missing from these areas)
-            black_lower = np.array([0, 0, 0])        # Pure black
-            black_upper = np.array([50, 50, 50])     # Dark gray (empty fuel)
+            # Look for actual fuel gauge colors - tank games often use specific colors
+            # Try multiple color ranges for fuel gauges
+            fuel_color_ranges = [
+                # Green fuel gauge
+                (np.array([0, 100, 0]), np.array([100, 255, 100])),
+                # Blue fuel gauge  
+                (np.array([100, 100, 0]), np.array([255, 255, 100])),
+                # Yellow fuel gauge
+                (np.array([0, 150, 150]), np.array([100, 255, 255])),
+                # Red fuel gauge
+                (np.array([0, 0, 100]), np.array([100, 100, 255])),
+                # White/gray fuel gauge
+                (np.array([150, 150, 150]), np.array([255, 255, 255]))
+            ]
             
-            # Create mask for black/empty areas
-            black_mask = cv2.inRange(fuel_gauge_area, black_lower, black_upper)
+            best_fuel_percentage = None
+            max_fuel_pixels = 0
             
-            # Everything else is considered "colored" (fuel remaining)
-            colored_lower = np.array([51, 51, 51])   # Above black threshold
-            colored_upper = np.array([255, 255, 255]) # All colors
-            colored_mask = cv2.inRange(fuel_gauge_area, colored_lower, colored_upper)
+            for i, (fuel_lower, fuel_upper) in enumerate(fuel_color_ranges):
+                # Create mask for this fuel color range
+                fuel_mask = cv2.inRange(fuel_gauge_area, fuel_lower, fuel_upper)
+                fuel_pixels = cv2.countNonZero(fuel_mask)
+                
+                if fuel_pixels > max_fuel_pixels:
+                    max_fuel_pixels = fuel_pixels
+                    
+                    # Define black/empty areas
+                    black_lower = np.array([0, 0, 0])
+                    black_upper = np.array([50, 50, 50])
+                    black_mask = cv2.inRange(fuel_gauge_area, black_lower, black_upper)
+                    black_pixels = cv2.countNonZero(black_mask)
+                    
+                    total_relevant_pixels = fuel_pixels + black_pixels
+                    
+                    if total_relevant_pixels > 100:  # Need enough pixels
+                        fuel_percentage = int((fuel_pixels / total_relevant_pixels) * 100)
+                        fuel_percentage = max(0, min(100, fuel_percentage))
+                        best_fuel_percentage = fuel_percentage
+                        
+                        logging.info(f"FUEL GAUGE ({location_name}, color_range_{i}): {fuel_pixels} fuel, {black_pixels} empty = {fuel_percentage}%")
             
-            # Count pixels
-            black_pixels = cv2.countNonZero(black_mask)
-            colored_pixels = cv2.countNonZero(colored_mask)
-            total_relevant_pixels = black_pixels + colored_pixels
+            # If no colored fuel gauge found, try the original black vs non-black approach
+            if best_fuel_percentage is None or max_fuel_pixels < 50:
+                black_lower = np.array([0, 0, 0])
+                black_upper = np.array([50, 50, 50])
+                black_mask = cv2.inRange(fuel_gauge_area, black_lower, black_upper)
+                
+                # Everything else is considered "colored" (fuel remaining)
+                colored_lower = np.array([51, 51, 51])
+                colored_upper = np.array([255, 255, 255])
+                colored_mask = cv2.inRange(fuel_gauge_area, colored_lower, colored_upper)
+                
+                black_pixels = cv2.countNonZero(black_mask)
+                colored_pixels = cv2.countNonZero(colored_mask)
+                total_relevant_pixels = black_pixels + colored_pixels
+                
+                if total_relevant_pixels > 100:
+                    fuel_percentage = int((colored_pixels / total_relevant_pixels) * 100)
+                    fuel_percentage = max(0, min(100, fuel_percentage))
+                    logging.info(f"FUEL GAUGE ({location_name}, black_vs_colored): {colored_pixels} fuel, {black_pixels} empty = {fuel_percentage}%")
+                    return fuel_percentage
+                else:
+                    logging.info(f"FUEL GAUGE ({location_name}): Not enough relevant pixels ({total_relevant_pixels})")
+                    return None
             
-            # Need some pixels to analyze
-            if total_relevant_pixels < 100:
-                logging.warning("Not enough relevant pixels in fuel gauge area")
-                return None
-            
-            # Calculate fuel percentage: colored pixels = fuel remaining
-            fuel_percentage = int((colored_pixels / total_relevant_pixels) * 100)
-            fuel_percentage = max(0, min(100, fuel_percentage))  # Clamp to 0-100%
-            
-            logging.info(f"SIMPLE fuel gauge: {colored_pixels} fuel pixels, {black_pixels} empty pixels = {fuel_percentage}%")
-            
-            # Save debug screenshot occasionally to verify we're looking at the right area
-            import random
-            if random.randint(1, 20) == 1:  # 5% chance
-                debug_path = f"/tmp/fuel_gauge_debug_{fuel_percentage}pct.png"
-                cv2.imwrite(debug_path, fuel_gauge_area)
-                logging.info(f"Saved fuel gauge debug image: {debug_path}")
-            
-            return fuel_percentage
+            return best_fuel_percentage
             
         except Exception as e:
-            logging.error(f"Error in simple fuel gauge measurement: {e}")
+            logging.error(f"Error in fuel gauge measurement ({location_name}): {e}")
             return None
     
     async def find_and_measure_fuel_bar(self, ui_area, total_width, total_height):
