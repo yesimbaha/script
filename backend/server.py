@@ -93,7 +93,99 @@ class TankpitBot:
         self.page = None
         self.running = False
         
-    async def start_browser(self):
+    
+    async def dismiss_login_overlay(self):
+        """Dismiss any remaining login overlays that might be intercepting clicks"""
+        try:
+            if not self.page:
+                return
+                
+            logging.info("Attempting to dismiss login overlay...")
+            
+            # Method 1: Try to close overlay with common close selectors
+            close_selectors = [
+                '.overlay-close',
+                '.close-button', 
+                '.modal-close',
+                '#login .close',
+                '.login-overlay .close',
+                '[aria-label="Close"]',
+                'button:has-text("Close")',
+                'button:has-text("×")',
+                '.fa-times',
+                '.fa-close'
+            ]
+            
+            for selector in close_selectors:
+                try:
+                    close_element = await self.page.query_selector(selector)
+                    if close_element:
+                        await close_element.click()
+                        await self.page.wait_for_timeout(1000)
+                        logging.info(f"Closed overlay using selector: {selector}")
+                        break
+                except:
+                    continue
+            
+            # Method 2: Press Escape key to dismiss modals
+            try:
+                await self.page.keyboard.press("Escape")
+                await self.page.wait_for_timeout(1000)
+                logging.info("Pressed Escape to dismiss overlays")
+            except:
+                pass
+            
+            # Method 3: Click outside the login overlay if it exists
+            try:
+                overlay = await self.page.query_selector('#login.overlay, .login-overlay')
+                if overlay:
+                    # Click in the top-left corner to dismiss overlay
+                    await self.page.mouse.click(50, 50)
+                    await self.page.wait_for_timeout(1000)
+                    logging.info("Clicked outside overlay to dismiss")
+            except:
+                pass
+            
+            # Method 4: Use JavaScript to hide overlay directly
+            try:
+                await self.page.evaluate("""
+                    // Hide login overlay using JavaScript
+                    const overlays = document.querySelectorAll('#login, .overlay, .login-overlay, .modal');
+                    overlays.forEach(overlay => {
+                        if (overlay.style) {
+                            overlay.style.display = 'none';
+                            overlay.style.visibility = 'hidden';
+                            overlay.style.opacity = '0';
+                            overlay.style.pointerEvents = 'none';
+                        }
+                    });
+                    
+                    // Remove overlay elements completely if needed
+                    const loginOverlay = document.querySelector('#login.overlay');
+                    if (loginOverlay) {
+                        loginOverlay.remove();
+                    }
+                    
+                    return 'Overlays hidden via JavaScript';
+                """)
+                logging.info("Used JavaScript to hide login overlays")
+            except Exception as e:
+                logging.warning(f"JavaScript overlay dismissal failed: {e}")
+            
+            # Method 5: Wait for overlay to disappear naturally
+            try:
+                await self.page.wait_for_selector('#login.overlay', state='hidden', timeout=3000)
+                logging.info("Login overlay disappeared naturally")
+            except:
+                logging.warning("Login overlay did not disappear within timeout")
+            
+            # Give the page a moment to settle after overlay dismissal
+            await self.page.wait_for_timeout(2000)
+            logging.info("Login overlay dismissal completed")
+            
+        except Exception as e:
+            logging.error(f"Error dismissing login overlay: {e}")
+    
         """Initialize browser and navigate to tankpit.com"""
         # Always clean up any existing browser first to avoid stale sessions
         await self.cleanup_browser()
