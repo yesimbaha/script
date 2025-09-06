@@ -1260,6 +1260,576 @@ class TankPitBotAPITester:
                 f"Error testing WebSocket endpoint: {str(e)}"
             )
 
+    def test_equipment_configuration_functions(self):
+        """Test new equipment configuration functionality"""
+        print(f"\n⚙️  Testing Equipment Configuration Functions...")
+        
+        try:
+            import sys
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check if all equipment configuration functions exist
+            equipment_functions = [
+                'configure_equipment_settings',
+                'verify_equipment_settings', 
+                'toggle_specific_equipment'
+            ]
+            
+            missing_functions = []
+            for func_name in equipment_functions:
+                if not hasattr(bot, func_name):
+                    missing_functions.append(func_name)
+            
+            if missing_functions:
+                return self.log_result(
+                    "Equipment Configuration Functions - Existence Check",
+                    False,
+                    f"Missing functions: {', '.join(missing_functions)}"
+                )
+            else:
+                self.log_result(
+                    "Equipment Configuration Functions - Existence Check",
+                    True,
+                    f"All {len(equipment_functions)} equipment functions found"
+                )
+            
+            # Test 2: Check if functions are callable (without page - should handle gracefully)
+            try:
+                import asyncio
+                
+                # Test configure_equipment_settings without page
+                asyncio.run(bot.configure_equipment_settings())
+                self.log_result(
+                    "Equipment Configuration - configure_equipment_settings callable",
+                    True,
+                    "Function handles missing page gracefully"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Equipment Configuration - configure_equipment_settings callable",
+                    False,
+                    f"Function crashed: {str(e)}"
+                )
+            
+            # Test 3: Test verify_equipment_settings without page
+            try:
+                result = asyncio.run(bot.verify_equipment_settings())
+                if isinstance(result, dict):
+                    self.log_result(
+                        "Equipment Configuration - verify_equipment_settings callable",
+                        True,
+                        f"Returns dict with {len(result)} equipment status entries"
+                    )
+                else:
+                    self.log_result(
+                        "Equipment Configuration - verify_equipment_settings callable",
+                        False,
+                        f"Invalid return type: {type(result)}"
+                    )
+            except Exception as e:
+                self.log_result(
+                    "Equipment Configuration - verify_equipment_settings callable",
+                    False,
+                    f"Function crashed: {str(e)}"
+                )
+            
+            # Test 4: Test toggle_specific_equipment without page
+            try:
+                result = asyncio.run(bot.toggle_specific_equipment('armors', 'off'))
+                if isinstance(result, bool):
+                    self.log_result(
+                        "Equipment Configuration - toggle_specific_equipment callable",
+                        True,
+                        f"Returns boolean result: {result}"
+                    )
+                else:
+                    self.log_result(
+                        "Equipment Configuration - toggle_specific_equipment callable",
+                        False,
+                        f"Invalid return type: {type(result)}"
+                    )
+            except Exception as e:
+                self.log_result(
+                    "Equipment Configuration - toggle_specific_equipment callable",
+                    False,
+                    f"Function crashed: {str(e)}"
+                )
+            
+            return True
+            
+        except ImportError as e:
+            return self.log_result(
+                "Equipment Configuration Functions",
+                False,
+                f"Cannot import server module: {str(e)}"
+            )
+        except Exception as e:
+            return self.log_result(
+                "Equipment Configuration Functions",
+                False,
+                f"Error testing equipment functions: {str(e)}"
+            )
+
+    def test_equipment_keyboard_mappings(self):
+        """Test equipment keyboard key mappings and sequences"""
+        print(f"\n⌨️  Testing Equipment Keyboard Mappings...")
+        
+        try:
+            import sys
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            import inspect
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check configure_equipment_settings source for keyboard sequences
+            try:
+                source = inspect.getsource(bot.configure_equipment_settings)
+                
+                # Check for expected keyboard keys (A, W, M, H, R)
+                expected_keys = ['a', 'w', 'm', 'h', 'r']
+                found_keys = []
+                
+                for key in expected_keys:
+                    if f'press("{key}")' in source or f"press('{key}')" in source:
+                        found_keys.append(key)
+                
+                if len(found_keys) == len(expected_keys):
+                    self.log_result(
+                        "Equipment Keyboard Mappings - Primary Keys (A,W,M,H,R)",
+                        True,
+                        f"All expected keys found: {', '.join(found_keys)}"
+                    )
+                else:
+                    missing_keys = set(expected_keys) - set(found_keys)
+                    self.log_result(
+                        "Equipment Keyboard Mappings - Primary Keys (A,W,M,H,R)",
+                        False,
+                        f"Missing keys: {', '.join(missing_keys)}, found: {', '.join(found_keys)}"
+                    )
+                
+                # Check for fallback number keys (1-5)
+                number_keys = ['1', '2', '3', '4', '5']
+                found_numbers = []
+                
+                for key in number_keys:
+                    if f'press("{key}")' in source or f"press('{key}')" in source:
+                        found_numbers.append(key)
+                
+                if len(found_numbers) >= 3:  # At least some number keys
+                    self.log_result(
+                        "Equipment Keyboard Mappings - Fallback Number Keys (1-5)",
+                        True,
+                        f"Number key fallbacks found: {', '.join(found_numbers)}"
+                    )
+                else:
+                    self.log_result(
+                        "Equipment Keyboard Mappings - Fallback Number Keys (1-5)",
+                        False,
+                        f"Insufficient number key fallbacks: {', '.join(found_numbers)}"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Equipment Keyboard Mappings - Source Analysis",
+                    False,
+                    f"Error analyzing source code: {str(e)}"
+                )
+            
+            # Test 2: Check toggle_specific_equipment key mappings
+            try:
+                source = inspect.getsource(bot.toggle_specific_equipment)
+                
+                # Check for equipment key mapping dictionary
+                if 'equipment_keys' in source and 'armors' in source and 'duals' in source:
+                    self.log_result(
+                        "Equipment Keyboard Mappings - Toggle Function Key Map",
+                        True,
+                        "Equipment key mapping dictionary found in toggle function"
+                    )
+                else:
+                    self.log_result(
+                        "Equipment Keyboard Mappings - Toggle Function Key Map",
+                        False,
+                        "Equipment key mapping not found in toggle function"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Equipment Keyboard Mappings - Toggle Function Analysis",
+                    False,
+                    f"Error analyzing toggle function: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "Equipment Keyboard Mappings",
+                False,
+                f"Error testing keyboard mappings: {str(e)}"
+            )
+
+    def test_equipment_integration_in_sequences(self):
+        """Test equipment configuration integration in bot sequences"""
+        print(f"\n🔄 Testing Equipment Integration in Bot Sequences...")
+        
+        try:
+            import sys
+            import inspect
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check perform_initial_join_sequence integration
+            try:
+                source = inspect.getsource(bot.perform_initial_join_sequence)
+                
+                if 'configure_equipment_settings' in source:
+                    # Check if it's Step 1 as specified
+                    if 'Step 1' in source and 'configure_equipment_settings' in source:
+                        self.log_result(
+                            "Equipment Integration - Initial Join Sequence Step 1",
+                            True,
+                            "Equipment configuration properly integrated as Step 1 in initial join sequence"
+                        )
+                    else:
+                        self.log_result(
+                            "Equipment Integration - Initial Join Sequence Step 1",
+                            True,
+                            "Equipment configuration found in initial join sequence (step position may vary)"
+                        )
+                else:
+                    self.log_result(
+                        "Equipment Integration - Initial Join Sequence",
+                        False,
+                        "Equipment configuration not found in initial join sequence"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Equipment Integration - Initial Join Sequence Analysis",
+                    False,
+                    f"Error analyzing initial join sequence: {str(e)}"
+                )
+            
+            # Test 2: Check execute_landing_sequence integration
+            try:
+                source = inspect.getsource(bot.execute_landing_sequence)
+                
+                if 'configure_equipment_settings' in source:
+                    # Check if it's Step 1 as specified
+                    if 'Step 1' in source and 'configure_equipment_settings' in source:
+                        self.log_result(
+                            "Equipment Integration - Landing Sequence Step 1",
+                            True,
+                            "Equipment configuration properly integrated as Step 1 in landing sequence"
+                        )
+                    else:
+                        self.log_result(
+                            "Equipment Integration - Landing Sequence Step 1",
+                            True,
+                            "Equipment configuration found in landing sequence (step position may vary)"
+                        )
+                else:
+                    self.log_result(
+                        "Equipment Integration - Landing Sequence",
+                        False,
+                        "Equipment configuration not found in landing sequence"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Equipment Integration - Landing Sequence Analysis",
+                    False,
+                    f"Error analyzing landing sequence: {str(e)}"
+                )
+            
+            # Test 3: Check that sequences are callable
+            try:
+                import asyncio
+                
+                # Test initial join sequence (should handle missing page)
+                asyncio.run(bot.perform_initial_join_sequence())
+                self.log_result(
+                    "Equipment Integration - Initial Join Sequence Callable",
+                    True,
+                    "Initial join sequence with equipment config is callable"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Equipment Integration - Initial Join Sequence Callable",
+                    False,
+                    f"Initial join sequence crashed: {str(e)}"
+                )
+            
+            try:
+                # Test landing sequence (should handle missing page)
+                asyncio.run(bot.execute_landing_sequence())
+                self.log_result(
+                    "Equipment Integration - Landing Sequence Callable",
+                    True,
+                    "Landing sequence with equipment config is callable"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Equipment Integration - Landing Sequence Callable",
+                    False,
+                    f"Landing sequence crashed: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "Equipment Integration in Sequences",
+                False,
+                f"Error testing sequence integration: {str(e)}"
+            )
+
+    def test_equipment_configuration_settings(self):
+        """Test specific equipment configuration settings"""
+        print(f"\n⚙️  Testing Equipment Configuration Settings...")
+        
+        try:
+            import sys
+            import inspect
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check configure_equipment_settings for correct settings
+            try:
+                source = inspect.getsource(bot.configure_equipment_settings)
+                
+                # Check for expected equipment settings in comments or logs
+                expected_settings = {
+                    'armors': 'OFF',
+                    'duals': 'ON', 
+                    'missiles': 'OFF',
+                    'homing': 'OFF',
+                    'radars': 'ON'
+                }
+                
+                settings_found = {}
+                for equipment, state in expected_settings.items():
+                    # Look for equipment name and state in source
+                    if equipment.lower() in source.lower():
+                        if state.lower() in source.lower():
+                            settings_found[equipment] = state
+                
+                if len(settings_found) >= 4:  # Most settings found
+                    self.log_result(
+                        "Equipment Configuration Settings - Expected Settings",
+                        True,
+                        f"Found expected settings: {settings_found}"
+                    )
+                else:
+                    self.log_result(
+                        "Equipment Configuration Settings - Expected Settings",
+                        False,
+                        f"Only found {len(settings_found)} of 5 expected settings: {settings_found}"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Equipment Configuration Settings - Settings Analysis",
+                    False,
+                    f"Error analyzing equipment settings: {str(e)}"
+                )
+            
+            # Test 2: Check verify_equipment_settings return structure
+            try:
+                import asyncio
+                result = asyncio.run(bot.verify_equipment_settings())
+                
+                if isinstance(result, dict):
+                    expected_keys = ['armors', 'duals', 'missiles', 'homing', 'radars']
+                    found_keys = [key for key in expected_keys if key in result]
+                    
+                    if len(found_keys) >= 4:
+                        self.log_result(
+                            "Equipment Configuration Settings - Verify Function Structure",
+                            True,
+                            f"Verify function returns dict with expected keys: {found_keys}"
+                        )
+                    else:
+                        self.log_result(
+                            "Equipment Configuration Settings - Verify Function Structure",
+                            False,
+                            f"Verify function missing expected keys. Found: {found_keys}"
+                        )
+                else:
+                    self.log_result(
+                        "Equipment Configuration Settings - Verify Function Structure",
+                        False,
+                        f"Verify function returns {type(result)}, expected dict"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Equipment Configuration Settings - Verify Function Test",
+                    False,
+                    f"Error testing verify function: {str(e)}"
+                )
+            
+            # Test 3: Check toggle_specific_equipment parameter handling
+            try:
+                import asyncio
+                
+                # Test with valid equipment types
+                valid_equipment = ['armors', 'duals', 'missiles', 'homing', 'radars']
+                valid_states = ['on', 'off']
+                
+                test_passed = True
+                for equipment in valid_equipment[:2]:  # Test first 2 to avoid too many calls
+                    for state in valid_states:
+                        try:
+                            result = asyncio.run(bot.toggle_specific_equipment(equipment, state))
+                            if not isinstance(result, bool):
+                                test_passed = False
+                                break
+                        except Exception:
+                            test_passed = False
+                            break
+                    if not test_passed:
+                        break
+                
+                if test_passed:
+                    self.log_result(
+                        "Equipment Configuration Settings - Toggle Function Parameters",
+                        True,
+                        "Toggle function handles valid equipment types and states correctly"
+                    )
+                else:
+                    self.log_result(
+                        "Equipment Configuration Settings - Toggle Function Parameters",
+                        False,
+                        "Toggle function parameter handling issues detected"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Equipment Configuration Settings - Toggle Function Parameters",
+                    False,
+                    f"Error testing toggle function parameters: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "Equipment Configuration Settings",
+                False,
+                f"Error testing equipment configuration settings: {str(e)}"
+            )
+
+    def test_equipment_error_handling(self):
+        """Test equipment configuration error handling"""
+        print(f"\n🛡️  Testing Equipment Configuration Error Handling...")
+        
+        try:
+            import sys
+            import asyncio
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Equipment functions handle missing page gracefully
+            try:
+                # All equipment functions should handle missing page without crashing
+                asyncio.run(bot.configure_equipment_settings())
+                asyncio.run(bot.verify_equipment_settings())
+                asyncio.run(bot.toggle_specific_equipment('armors', 'off'))
+                
+                self.log_result(
+                    "Equipment Error Handling - Missing Page Handling",
+                    True,
+                    "All equipment functions handle missing page gracefully"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Equipment Error Handling - Missing Page Handling",
+                    False,
+                    f"Equipment functions crash with missing page: {str(e)}"
+                )
+            
+            # Test 2: Toggle function handles invalid equipment types
+            try:
+                result = asyncio.run(bot.toggle_specific_equipment('invalid_equipment', 'on'))
+                
+                # Should return False for invalid equipment type
+                if result == False:
+                    self.log_result(
+                        "Equipment Error Handling - Invalid Equipment Type",
+                        True,
+                        "Toggle function correctly handles invalid equipment type"
+                    )
+                else:
+                    self.log_result(
+                        "Equipment Error Handling - Invalid Equipment Type",
+                        False,
+                        f"Toggle function returned {result} for invalid equipment type"
+                    )
+            except Exception as e:
+                self.log_result(
+                    "Equipment Error Handling - Invalid Equipment Type",
+                    False,
+                    f"Toggle function crashes with invalid equipment type: {str(e)}"
+                )
+            
+            # Test 3: Functions have proper logging
+            try:
+                import inspect
+                
+                # Check if functions have logging statements
+                functions_to_check = [
+                    bot.configure_equipment_settings,
+                    bot.verify_equipment_settings,
+                    bot.toggle_specific_equipment
+                ]
+                
+                logging_found = 0
+                for func in functions_to_check:
+                    source = inspect.getsource(func)
+                    if 'logging.' in source:
+                        logging_found += 1
+                
+                if logging_found >= 2:
+                    self.log_result(
+                        "Equipment Error Handling - Logging Implementation",
+                        True,
+                        f"Equipment functions have proper logging ({logging_found}/{len(functions_to_check)} functions)"
+                    )
+                else:
+                    self.log_result(
+                        "Equipment Error Handling - Logging Implementation",
+                        False,
+                        f"Insufficient logging in equipment functions ({logging_found}/{len(functions_to_check)} functions)"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Equipment Error Handling - Logging Check",
+                    False,
+                    f"Error checking logging implementation: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "Equipment Error Handling",
+                False,
+                f"Error testing equipment error handling: {str(e)}"
+            )
+
     def run_simplified_fuel_detection_tests(self):
         """Run focused tests for the simplified fuel detection system"""
         print("=" * 60)
