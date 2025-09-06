@@ -2221,22 +2221,40 @@ class TankpitBot:
             await self.page.keyboard.press("s")
             await self.page.wait_for_timeout(1500)
             
-            # Check if "nothing detected here" message appears
-            if await self.detect_nothing_found_message():
-                logging.info("Nothing detected in balanced mode - trying proximity search")
-                await self.perform_random_proximity_move()
-            
             # Press D for mines
             await self.page.keyboard.press("d")
             await self.page.wait_for_timeout(1000)
             
-            # Check for fuel and collect if needed
+            # Check for fuel and equipment
             fuel_nodes = await self.detect_fuel_nodes()
-            if fuel_nodes:
-                await self.collect_fuel_from_nodes(fuel_nodes[:2])  # Limit collection
+            equipment_items = await self.detect_equipment_visually()
             
-            # Collect equipment
-            await self.collect_all_equipment()
+            # If nothing found, use persistent search (but limited for balanced mode)
+            if len(fuel_nodes) == 0 and len(equipment_items) == 0:
+                logging.info("Nothing found in balanced mode - using limited persistent search")
+                # Use shorter search for balanced mode (don't be as aggressive)
+                current_fuel = await self.detect_fuel_level()
+                search_attempts = 5  # Limited search attempts in balanced mode
+                
+                for attempt in range(search_attempts):
+                    if attempt % 2 == 0:
+                        await self.perform_random_proximity_move()
+                    else:
+                        await self.move_to_screen_edge_and_radar()
+                    
+                    # Check again
+                    fuel_nodes = await self.detect_fuel_nodes()
+                    equipment_items = await self.detect_equipment_visually()
+                    
+                    if len(fuel_nodes) > 0 or len(equipment_items) > 0:
+                        break
+            
+            # Collect what we found
+            if fuel_nodes:
+                await self.collect_fuel_from_nodes(fuel_nodes[:2])  # Limit collection in balanced mode
+            
+            if equipment_items:
+                await self.collect_all_equipment()
             
         except Exception as e:
             logging.error(f"Error in balanced sequence: {e}")
