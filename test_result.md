@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: Improve fuel detection system for tankpit.com bot by measuring the fuel bar at the bottom of the screen and calculating fuel percentage based on black (empty) vs colored (fuel) portions regardless of fuel bar color.
+user_problem_statement: CRITICAL ISSUE - Tank connection failing due to login overlay intercepting clicks. User reports "tank is not connecting now" with backend logs showing "<div id='login' class='overlay'>…</div> intercepts pointer events" preventing tank management interface access after successful login.
 
 backend:
   - task: "Improve fuel detection algorithm"
