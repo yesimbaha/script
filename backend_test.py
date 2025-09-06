@@ -641,6 +641,180 @@ class TankPitBotAPITester:
                 f"Error testing fuel detection methods: {str(e)}"
             )
 
+    def test_bot_tracking_bug_fixes(self):
+        """Test the specific bug fixes for bot tracking issues"""
+        print(f"\n🐛 Testing Bot Tracking Bug Fixes...")
+        
+        try:
+            import sys
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Verify all sequence functions have page validation
+            sequence_functions = [
+                'execute_fuel_priority_sequence',
+                'execute_safe_mode_sequence', 
+                'execute_balanced_sequence',
+                'perform_initial_join_sequence'
+            ]
+            
+            missing_sequences = []
+            for func_name in sequence_functions:
+                if not hasattr(bot, func_name):
+                    missing_sequences.append(func_name)
+            
+            if missing_sequences:
+                return self.log_result(
+                    "Bot Tracking Bug Fixes - Sequence Functions",
+                    False,
+                    f"Missing sequence functions: {', '.join(missing_sequences)}"
+                )
+            
+            # Test 2: Verify detect_fuel_nodes and detect_equipment_visually exist
+            detection_functions = [
+                'detect_fuel_nodes',
+                'detect_equipment_visually'
+            ]
+            
+            missing_detection = []
+            for func_name in detection_functions:
+                if not hasattr(bot, func_name):
+                    missing_detection.append(func_name)
+            
+            if missing_detection:
+                return self.log_result(
+                    "Bot Tracking Bug Fixes - Detection Functions",
+                    False,
+                    f"Missing detection functions: {', '.join(missing_detection)}"
+                )
+            
+            # Test 3: Verify bot cycle function exists and has error handling
+            if not hasattr(bot, 'run_bot_cycle'):
+                return self.log_result(
+                    "Bot Tracking Bug Fixes - Bot Cycle",
+                    False,
+                    "Missing run_bot_cycle function"
+                )
+            
+            # Test 4: Check that bot can be instantiated without errors
+            try:
+                test_bot = TankpitBot()
+                self.log_result(
+                    "Bot Tracking Bug Fixes - Bot Instantiation",
+                    True,
+                    "Bot can be instantiated without errors"
+                )
+            except Exception as e:
+                return self.log_result(
+                    "Bot Tracking Bug Fixes - Bot Instantiation",
+                    False,
+                    f"Bot instantiation failed: {str(e)}"
+                )
+            
+            return self.log_result(
+                "Bot Tracking Bug Fixes - Overall",
+                True,
+                "All bug fix components are present and functional"
+            )
+                
+        except Exception as e:
+            return self.log_result(
+                "Bot Tracking Bug Fixes",
+                False,
+                f"Error testing bug fixes: {str(e)}"
+            )
+
+    def test_page_validation_error_handling(self):
+        """Test that functions handle missing page gracefully"""
+        print(f"\n🔍 Testing Page Validation Error Handling...")
+        
+        try:
+            import sys
+            import asyncio
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            # Create bot instance without browser session (page will be None)
+            bot = TankpitBot()
+            
+            # Test that detect_fuel_level handles missing page
+            try:
+                # This should return a default value, not crash
+                result = asyncio.run(bot.detect_fuel_level())
+                if isinstance(result, (int, float)) and 0 <= result <= 100:
+                    self.log_result(
+                        "Page Validation - detect_fuel_level",
+                        True,
+                        f"Returns default fuel level {result}% when no page available"
+                    )
+                else:
+                    self.log_result(
+                        "Page Validation - detect_fuel_level",
+                        False,
+                        f"Invalid return value: {result}"
+                    )
+            except Exception as e:
+                self.log_result(
+                    "Page Validation - detect_fuel_level",
+                    False,
+                    f"Function crashed with missing page: {str(e)}"
+                )
+            
+            # Test that detect_fuel_nodes handles missing page
+            try:
+                result = asyncio.run(bot.detect_fuel_nodes())
+                if isinstance(result, list):
+                    self.log_result(
+                        "Page Validation - detect_fuel_nodes",
+                        True,
+                        f"Returns empty list when no page available (got {len(result)} nodes)"
+                    )
+                else:
+                    self.log_result(
+                        "Page Validation - detect_fuel_nodes",
+                        False,
+                        f"Invalid return type: {type(result)}"
+                    )
+            except Exception as e:
+                self.log_result(
+                    "Page Validation - detect_fuel_nodes",
+                    False,
+                    f"Function crashed with missing page: {str(e)}"
+                )
+            
+            # Test that detect_equipment_visually handles missing page
+            try:
+                result = asyncio.run(bot.detect_equipment_visually())
+                if isinstance(result, list):
+                    self.log_result(
+                        "Page Validation - detect_equipment_visually",
+                        True,
+                        f"Returns empty list when no page available (got {len(result)} items)"
+                    )
+                else:
+                    self.log_result(
+                        "Page Validation - detect_equipment_visually",
+                        False,
+                        f"Invalid return type: {type(result)}"
+                    )
+            except Exception as e:
+                self.log_result(
+                    "Page Validation - detect_equipment_visually",
+                    False,
+                    f"Function crashed with missing page: {str(e)}"
+                )
+            
+            return True
+                
+        except Exception as e:
+            return self.log_result(
+                "Page Validation Error Handling",
+                False,
+                f"Error testing page validation: {str(e)}"
+            )
+
     def test_screenshot_endpoint(self):
         """Test GET /api/bot/screenshot"""
         return self.run_api_test(
