@@ -128,11 +128,11 @@ backend:
 
   - task: "Fix login functionality"
     implemented: true
-    working: true
+    working: false
     file: "/app/backend/server.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
         - working: false
           agent: "main"
@@ -140,6 +140,9 @@ backend:
         - working: true
           agent: "main"
           comment: "FIXED: Started Xvfb virtual display server and reinstalled Playwright browsers. Login API now returns success. Issue was missing Xvfb process required for Playwright browser automation."
+        - working: false
+          agent: "main"
+          comment: "LOGIN STILL FAILING: User reports login still fails. Deep investigation revealed: 1) Login API returns 200 success, 2) Backend logs show successful navigation and login attempts, 3) BUT browser connections get terminated with 'Connection closed while reading from the driver' 4) WebSocket connection fails due to wss:// vs ws:// mismatch 5) Frontend shows 'Login failed: Login failed'. Root cause: Browser session termination during tankpit.com interaction, possibly due to timeout/resource issues."
         - working: true
           agent: "testing"
           comment: "COMPREHENSIVE LOGIN TESTING COMPLETED: ✅ Xvfb Integration: Virtual display server running on :99 with 3+ Chrome processes ✅ Playwright Browser Startup: Successfully launches browsers with correct display args ✅ Login API Endpoint: Returns 200 status with 9.47s response time ✅ Browser Automation: Functional - navigates to tankpit.com, finds login form, fills credentials ✅ Tank Detection: Browser session established (timeout on tanks API expected due to complex page interactions) ✅ Error Handling: Proper 422 validation for missing fields ✅ Xvfb Fix Verification: Complete - login functionality restored after Xvfb resolution. The login system is working correctly with browser automation successfully connecting to tankpit.com."
