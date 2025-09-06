@@ -2131,7 +2131,7 @@ class TankpitBot:
             return False
     
     async def execute_fuel_priority_sequence(self):
-        """Execute sequence when fuel is below refuel threshold"""
+        """Execute sequence when fuel is below refuel threshold - NEVER STOP UNTIL FULL"""
         try:
             if not self.page:
                 logging.error("No page available for fuel priority sequence")
@@ -2139,44 +2139,18 @@ class TankpitBot:
                 return
                 
             bot_state["status"] = "fuel_priority_mode"
-            logging.info("Executing fuel priority sequence")
+            logging.info("Executing fuel priority sequence - PERSISTENT SEARCH UNTIL FULL")
             
-            # Press S for radar
-            await self.page.keyboard.press("s")
-            await self.page.wait_for_timeout(1500)
+            # Use persistent search - never stop until safety threshold reached
+            search_successful = await self.persistent_fuel_and_equipment_search()
             
-            # Check if "nothing detected here" message appears
-            if await self.detect_nothing_found_message():
-                logging.info("Nothing detected - performing random proximity search")
-                attempts = 0
-                max_attempts = 5  # Try 5 different locations
-                
-                while attempts < max_attempts:
-                    await self.perform_random_proximity_move()
-                    
-                    # Check again after moving
-                    if not await self.detect_nothing_found_message():
-                        logging.info("Found something after proximity search")
-                        break
-                    
-                    attempts += 1
-                    logging.info(f"Still nothing found, attempt {attempts}/{max_attempts}")
-                
-                if attempts >= max_attempts:
-                    logging.info("No items found after proximity search - using overview map")
-                    await self.use_overview_map_for_fuel()
-                    return
-            
-            # Look for fuel nodes on current screen
-            fuel_nodes = await self.detect_fuel_nodes()
-            
-            if fuel_nodes:
-                # Collect fuel from highest value nodes first
-                await self.collect_fuel_from_nodes(fuel_nodes)
-            else:
-                # No fuel on screen - use map to find fuel
-                logging.info("No fuel detected on screen, opening overview map")
+            if not search_successful:
+                # If persistent search failed after max attempts, try overview map
+                logging.info("Persistent search exhausted - using overview map as last resort")
                 await self.use_overview_map_for_fuel()
+                
+                # Try persistent search again in new location
+                await self.persistent_fuel_and_equipment_search()
                 
         except Exception as e:
             logging.error(f"Error in fuel priority sequence: {e}")
