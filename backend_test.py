@@ -2313,6 +2313,769 @@ class TankPitBotAPITester:
                 f"Workflow partially failed - {success_rate}% success rate - failed steps: {', '.join(failed_steps)}"
             )
 
+    def test_persistent_search_functions_existence(self):
+        """Test that all persistent search functions exist and are callable"""
+        print(f"\n🔍 Testing Persistent Search Functions Existence...")
+        
+        try:
+            import sys
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check if all persistent search functions exist
+            persistent_search_functions = [
+                'persistent_fuel_and_equipment_search',
+                'move_to_screen_edge_and_radar',
+                'perform_random_proximity_move'
+            ]
+            
+            missing_functions = []
+            for func_name in persistent_search_functions:
+                if not hasattr(bot, func_name):
+                    missing_functions.append(func_name)
+            
+            if missing_functions:
+                return self.log_result(
+                    "Persistent Search Functions - Existence Check",
+                    False,
+                    f"Missing functions: {', '.join(missing_functions)}"
+                )
+            else:
+                self.log_result(
+                    "Persistent Search Functions - Existence Check",
+                    True,
+                    f"All {len(persistent_search_functions)} persistent search functions found"
+                )
+            
+            # Test 2: Check if functions are callable (without page - should handle gracefully)
+            try:
+                import asyncio
+                
+                # Test persistent_fuel_and_equipment_search without page
+                result = asyncio.run(bot.persistent_fuel_and_equipment_search())
+                if isinstance(result, bool):
+                    self.log_result(
+                        "Persistent Search - persistent_fuel_and_equipment_search callable",
+                        True,
+                        f"Function returns boolean result: {result}"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search - persistent_fuel_and_equipment_search callable",
+                        False,
+                        f"Invalid return type: {type(result)}"
+                    )
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search - persistent_fuel_and_equipment_search callable",
+                    False,
+                    f"Function crashed: {str(e)}"
+                )
+            
+            # Test 3: Test move_to_screen_edge_and_radar without page
+            try:
+                asyncio.run(bot.move_to_screen_edge_and_radar())
+                self.log_result(
+                    "Persistent Search - move_to_screen_edge_and_radar callable",
+                    True,
+                    "Function handles missing page gracefully"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search - move_to_screen_edge_and_radar callable",
+                    False,
+                    f"Function crashed: {str(e)}"
+                )
+            
+            # Test 4: Test perform_random_proximity_move without page
+            try:
+                asyncio.run(bot.perform_random_proximity_move())
+                self.log_result(
+                    "Persistent Search - perform_random_proximity_move callable",
+                    True,
+                    "Function handles missing page gracefully"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search - perform_random_proximity_move callable",
+                    False,
+                    f"Function crashed: {str(e)}"
+                )
+            
+            return True
+            
+        except ImportError as e:
+            return self.log_result(
+                "Persistent Search Functions",
+                False,
+                f"Cannot import server module: {str(e)}"
+            )
+        except Exception as e:
+            return self.log_result(
+                "Persistent Search Functions",
+                False,
+                f"Error testing persistent search functions: {str(e)}"
+            )
+
+    def test_12_pixel_proximity_movement(self):
+        """Test 12-pixel proximity movement calculations"""
+        print(f"\n📐 Testing 12-Pixel Proximity Movement Calculations...")
+        
+        try:
+            import sys
+            import inspect
+            import math
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check source code for 12-pixel radius
+            try:
+                source = inspect.getsource(bot.perform_random_proximity_move)
+                
+                # Check for 12-pixel radius (reduced from 15)
+                if '12' in source and 'pixel' in source.lower():
+                    self.log_result(
+                        "12-Pixel Proximity - Radius Configuration",
+                        True,
+                        "12-pixel radius found in proximity move function"
+                    )
+                elif 'distance = random.uniform(5, 12)' in source:
+                    self.log_result(
+                        "12-Pixel Proximity - Distance Range",
+                        True,
+                        "Correct distance range (5-12 pixels) found in function"
+                    )
+                else:
+                    self.log_result(
+                        "12-Pixel Proximity - Configuration Check",
+                        False,
+                        "12-pixel configuration not clearly found in source"
+                    )
+                
+                # Check for proper mathematical calculations
+                if 'math.cos' in source and 'math.sin' in source:
+                    self.log_result(
+                        "12-Pixel Proximity - Mathematical Calculations",
+                        True,
+                        "Proper trigonometric calculations found (cos/sin for circular movement)"
+                    )
+                else:
+                    self.log_result(
+                        "12-Pixel Proximity - Mathematical Calculations",
+                        False,
+                        "Trigonometric calculations not found in proximity move"
+                    )
+                
+                # Check for bounds checking
+                if 'max(' in source and 'min(' in source:
+                    self.log_result(
+                        "12-Pixel Proximity - Bounds Checking",
+                        True,
+                        "Screen bounds checking found in proximity move"
+                    )
+                else:
+                    self.log_result(
+                        "12-Pixel Proximity - Bounds Checking",
+                        False,
+                        "Screen bounds checking not found"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "12-Pixel Proximity - Source Analysis",
+                    False,
+                    f"Error analyzing source code: {str(e)}"
+                )
+            
+            # Test 2: Verify radar follows proximity move
+            try:
+                source = inspect.getsource(bot.perform_random_proximity_move)
+                
+                if 'press("s")' in source or "press('s')" in source:
+                    self.log_result(
+                        "12-Pixel Proximity - Radar Integration",
+                        True,
+                        "Radar scan (press 's') found after proximity move"
+                    )
+                else:
+                    self.log_result(
+                        "12-Pixel Proximity - Radar Integration",
+                        False,
+                        "Radar scan not found after proximity move"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "12-Pixel Proximity - Radar Integration Check",
+                    False,
+                    f"Error checking radar integration: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "12-Pixel Proximity Movement",
+                False,
+                f"Error testing proximity movement: {str(e)}"
+            )
+
+    def test_screen_edge_exploration(self):
+        """Test screen edge exploration with proper coordinate calculations"""
+        print(f"\n🖼️  Testing Screen Edge Exploration...")
+        
+        try:
+            import sys
+            import inspect
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check source code for edge exploration logic
+            try:
+                source = inspect.getsource(bot.move_to_screen_edge_and_radar)
+                
+                # Check for edge selection (top, right, bottom, left)
+                edges_found = []
+                if 'top' in source.lower():
+                    edges_found.append('top')
+                if 'right' in source.lower():
+                    edges_found.append('right')
+                if 'bottom' in source.lower():
+                    edges_found.append('bottom')
+                if 'left' in source.lower():
+                    edges_found.append('left')
+                
+                if len(edges_found) >= 4:
+                    self.log_result(
+                        "Screen Edge Exploration - Edge Selection",
+                        True,
+                        f"All screen edges supported: {', '.join(edges_found)}"
+                    )
+                else:
+                    self.log_result(
+                        "Screen Edge Exploration - Edge Selection",
+                        False,
+                        f"Missing edges, found: {', '.join(edges_found)}"
+                    )
+                
+                # Check for margin to avoid UI elements
+                if 'margin' in source and '30' in source:
+                    self.log_result(
+                        "Screen Edge Exploration - UI Margin",
+                        True,
+                        "30px margin found to avoid UI elements"
+                    )
+                else:
+                    self.log_result(
+                        "Screen Edge Exploration - UI Margin",
+                        False,
+                        "UI margin configuration not found or incorrect"
+                    )
+                
+                # Check for random edge selection
+                if 'random' in source and 'randint' in source:
+                    self.log_result(
+                        "Screen Edge Exploration - Random Selection",
+                        True,
+                        "Random edge selection logic found"
+                    )
+                else:
+                    self.log_result(
+                        "Screen Edge Exploration - Random Selection",
+                        False,
+                        "Random edge selection not found"
+                    )
+                
+                # Check for coordinate calculations
+                if 'target_x' in source and 'target_y' in source:
+                    self.log_result(
+                        "Screen Edge Exploration - Coordinate Calculations",
+                        True,
+                        "Target coordinate calculations found"
+                    )
+                else:
+                    self.log_result(
+                        "Screen Edge Exploration - Coordinate Calculations",
+                        False,
+                        "Target coordinate calculations not found"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Screen Edge Exploration - Source Analysis",
+                    False,
+                    f"Error analyzing source code: {str(e)}"
+                )
+            
+            # Test 2: Verify radar follows edge exploration
+            try:
+                source = inspect.getsource(bot.move_to_screen_edge_and_radar)
+                
+                if 'press("s")' in source or "press('s')" in source:
+                    self.log_result(
+                        "Screen Edge Exploration - Radar Integration",
+                        True,
+                        "Radar scan found after edge exploration"
+                    )
+                else:
+                    self.log_result(
+                        "Screen Edge Exploration - Radar Integration",
+                        False,
+                        "Radar scan not found after edge exploration"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Screen Edge Exploration - Radar Integration Check",
+                    False,
+                    f"Error checking radar integration: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "Screen Edge Exploration",
+                False,
+                f"Error testing screen edge exploration: {str(e)}"
+            )
+
+    def test_persistent_search_logic(self):
+        """Test persistent search logic with different fuel threshold scenarios"""
+        print(f"\n⛽ Testing Persistent Search Logic...")
+        
+        try:
+            import sys
+            import inspect
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check persistent search loop logic
+            try:
+                source = inspect.getsource(bot.persistent_fuel_and_equipment_search)
+                
+                # Check for safety threshold checking
+                if 'safe_threshold' in source:
+                    self.log_result(
+                        "Persistent Search Logic - Safety Threshold Check",
+                        True,
+                        "Safety threshold checking found in persistent search"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Logic - Safety Threshold Check",
+                        False,
+                        "Safety threshold checking not found"
+                    )
+                
+                # Check for maximum search attempts (20)
+                if '20' in source and 'max_search_attempts' in source:
+                    self.log_result(
+                        "Persistent Search Logic - Max Attempts (20)",
+                        True,
+                        "Maximum 20 search attempts configuration found"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Logic - Max Attempts",
+                        False,
+                        "Maximum search attempts configuration not found or incorrect"
+                    )
+                
+                # Check for search strategy alternation
+                if 'search_attempt % 3' in source or 'alternates' in source.lower():
+                    self.log_result(
+                        "Persistent Search Logic - Strategy Alternation",
+                        True,
+                        "Search strategy alternation logic found"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Logic - Strategy Alternation",
+                        False,
+                        "Search strategy alternation not clearly implemented"
+                    )
+                
+                # Check for overview map fallback
+                if 'use_overview_map_for_fuel' in source:
+                    self.log_result(
+                        "Persistent Search Logic - Overview Map Fallback",
+                        True,
+                        "Overview map fallback found after max attempts"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Logic - Overview Map Fallback",
+                        False,
+                        "Overview map fallback not found"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search Logic - Source Analysis",
+                    False,
+                    f"Error analyzing persistent search logic: {str(e)}"
+                )
+            
+            # Test 2: Check integration with fuel/equipment detection
+            try:
+                source = inspect.getsource(bot.persistent_fuel_and_equipment_search)
+                
+                # Check for fuel node detection
+                if 'detect_fuel_nodes' in source:
+                    self.log_result(
+                        "Persistent Search Logic - Fuel Node Detection",
+                        True,
+                        "Fuel node detection integrated in persistent search"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Logic - Fuel Node Detection",
+                        False,
+                        "Fuel node detection not found in persistent search"
+                    )
+                
+                # Check for equipment detection
+                if 'detect_equipment_visually' in source:
+                    self.log_result(
+                        "Persistent Search Logic - Equipment Detection",
+                        True,
+                        "Equipment detection integrated in persistent search"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Logic - Equipment Detection",
+                        False,
+                        "Equipment detection not found in persistent search"
+                    )
+                
+                # Check for fuel collection priority
+                if 'collect_fuel_from_nodes' in source or 'fuel_nodes' in source:
+                    self.log_result(
+                        "Persistent Search Logic - Fuel Collection Priority",
+                        True,
+                        "Fuel collection priority logic found"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Logic - Fuel Collection Priority",
+                        False,
+                        "Fuel collection priority not clearly implemented"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search Logic - Integration Check",
+                    False,
+                    f"Error checking integration: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "Persistent Search Logic",
+                False,
+                f"Error testing persistent search logic: {str(e)}"
+            )
+
+    def test_enhanced_sequence_integration(self):
+        """Test integration of persistent search with existing sequence functions"""
+        print(f"\n🔄 Testing Enhanced Sequence Integration...")
+        
+        try:
+            import sys
+            import inspect
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check execute_fuel_priority_sequence integration
+            try:
+                source = inspect.getsource(bot.execute_fuel_priority_sequence)
+                
+                if 'persistent_fuel_and_equipment_search' in source:
+                    self.log_result(
+                        "Enhanced Sequence Integration - Fuel Priority Sequence",
+                        True,
+                        "Persistent search integrated in fuel priority sequence"
+                    )
+                else:
+                    self.log_result(
+                        "Enhanced Sequence Integration - Fuel Priority Sequence",
+                        False,
+                        "Persistent search not found in fuel priority sequence"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Enhanced Sequence Integration - Fuel Priority Analysis",
+                    False,
+                    f"Error analyzing fuel priority sequence: {str(e)}"
+                )
+            
+            # Test 2: Check execute_balanced_sequence integration
+            try:
+                source = inspect.getsource(bot.execute_balanced_sequence)
+                
+                if 'persistent_fuel_and_equipment_search' in source:
+                    self.log_result(
+                        "Enhanced Sequence Integration - Balanced Sequence",
+                        True,
+                        "Persistent search integrated in balanced sequence"
+                    )
+                else:
+                    self.log_result(
+                        "Enhanced Sequence Integration - Balanced Sequence",
+                        False,
+                        "Persistent search not found in balanced sequence"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Enhanced Sequence Integration - Balanced Analysis",
+                    False,
+                    f"Error analyzing balanced sequence: {str(e)}"
+                )
+            
+            # Test 3: Check collect_fuel_until_safe integration
+            try:
+                if hasattr(bot, 'collect_fuel_until_safe'):
+                    source = inspect.getsource(bot.collect_fuel_until_safe)
+                    
+                    if 'persistent' in source.lower() or 'persistent_fuel_and_equipment_search' in source:
+                        self.log_result(
+                            "Enhanced Sequence Integration - Collect Fuel Until Safe",
+                            True,
+                            "Persistent search approach integrated in collect_fuel_until_safe"
+                        )
+                    else:
+                        self.log_result(
+                            "Enhanced Sequence Integration - Collect Fuel Until Safe",
+                            False,
+                            "Persistent search approach not found in collect_fuel_until_safe"
+                        )
+                else:
+                    self.log_result(
+                        "Enhanced Sequence Integration - Collect Fuel Until Safe",
+                        False,
+                        "collect_fuel_until_safe function not found"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Enhanced Sequence Integration - Collect Fuel Analysis",
+                    False,
+                    f"Error analyzing collect_fuel_until_safe: {str(e)}"
+                )
+            
+            # Test 4: Check that sequences are callable with persistent search
+            try:
+                import asyncio
+                
+                # Test fuel priority sequence (should handle missing page)
+                asyncio.run(bot.execute_fuel_priority_sequence())
+                self.log_result(
+                    "Enhanced Sequence Integration - Fuel Priority Callable",
+                    True,
+                    "Fuel priority sequence with persistent search is callable"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Enhanced Sequence Integration - Fuel Priority Callable",
+                    False,
+                    f"Fuel priority sequence crashed: {str(e)}"
+                )
+            
+            try:
+                # Test balanced sequence (should handle missing page)
+                asyncio.run(bot.execute_balanced_sequence())
+                self.log_result(
+                    "Enhanced Sequence Integration - Balanced Sequence Callable",
+                    True,
+                    "Balanced sequence with persistent search is callable"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Enhanced Sequence Integration - Balanced Sequence Callable",
+                    False,
+                    f"Balanced sequence crashed: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "Enhanced Sequence Integration",
+                False,
+                f"Error testing sequence integration: {str(e)}"
+            )
+
+    def test_persistent_search_error_handling(self):
+        """Test error handling for browser session issues in persistent search"""
+        print(f"\n🛡️  Testing Persistent Search Error Handling...")
+        
+        try:
+            import sys
+            import asyncio
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            # Create bot instance without browser session
+            bot = TankpitBot()
+            
+            # Test 1: Test persistent search without page
+            try:
+                result = asyncio.run(bot.persistent_fuel_and_equipment_search())
+                if isinstance(result, bool):
+                    self.log_result(
+                        "Persistent Search Error Handling - No Page",
+                        True,
+                        f"Persistent search handles missing page gracefully, returns: {result}"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Error Handling - No Page",
+                        False,
+                        f"Invalid return type from persistent search: {type(result)}"
+                    )
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search Error Handling - No Page",
+                    False,
+                    f"Persistent search crashed with missing page: {str(e)}"
+                )
+            
+            # Test 2: Test screen edge exploration without page
+            try:
+                asyncio.run(bot.move_to_screen_edge_and_radar())
+                self.log_result(
+                    "Persistent Search Error Handling - Screen Edge No Page",
+                    True,
+                    "Screen edge exploration handles missing page gracefully"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search Error Handling - Screen Edge No Page",
+                    False,
+                    f"Screen edge exploration crashed: {str(e)}"
+                )
+            
+            # Test 3: Test proximity move without page
+            try:
+                asyncio.run(bot.perform_random_proximity_move())
+                self.log_result(
+                    "Persistent Search Error Handling - Proximity Move No Page",
+                    True,
+                    "Proximity move handles missing page gracefully"
+                )
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search Error Handling - Proximity Move No Page",
+                    False,
+                    f"Proximity move crashed: {str(e)}"
+                )
+            
+            # Test 4: Check source code for error handling patterns
+            try:
+                import inspect
+                
+                source = inspect.getsource(bot.persistent_fuel_and_equipment_search)
+                
+                if 'if not self.page:' in source or 'except' in source:
+                    self.log_result(
+                        "Persistent Search Error Handling - Source Code Patterns",
+                        True,
+                        "Error handling patterns found in persistent search source"
+                    )
+                else:
+                    self.log_result(
+                        "Persistent Search Error Handling - Source Code Patterns",
+                        False,
+                        "Error handling patterns not clearly found in source"
+                    )
+                
+            except Exception as e:
+                self.log_result(
+                    "Persistent Search Error Handling - Source Analysis",
+                    False,
+                    f"Error analyzing source code: {str(e)}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "Persistent Search Error Handling",
+                False,
+                f"Error testing error handling: {str(e)}"
+            )
+
+    def run_persistent_search_focused_tests(self):
+        """Run tests specifically focused on the persistent search functionality"""
+        print("=" * 80)
+        print("🔍 PERSISTENT SEARCH SYSTEM TESTING")
+        print("=" * 80)
+        print(f"Testing against: {self.base_url}")
+        print(f"API Base URL: {self.api_url}")
+        print("Focus: Enhanced persistent fuel and equipment search functionality")
+        print("Features: 12-pixel proximity, screen edge exploration, never-give-up search")
+        
+        # Test server health first
+        print("\n🏥 TESTING SERVER HEALTH...")
+        self.test_server_health()
+        
+        # PRIORITY TESTS FOR PERSISTENT SEARCH SYSTEM
+        print("\n🔍 PRIORITY: PERSISTENT SEARCH FUNCTIONALITY TESTS")
+        print("="*60)
+        self.test_persistent_search_functions_existence()
+        self.test_12_pixel_proximity_movement()
+        self.test_screen_edge_exploration()
+        self.test_persistent_search_logic()
+        self.test_enhanced_sequence_integration()
+        self.test_persistent_search_error_handling()
+        
+        # Supporting tests for fuel/equipment detection
+        print("\n⛽ SUPPORTING FUEL/EQUIPMENT DETECTION TESTS...")
+        self.test_enhanced_fuel_detection_methods()
+        self.test_enhanced_bot_sequences()
+        
+        # Print focused summary
+        print("\n" + "=" * 80)
+        print("🎯 PERSISTENT SEARCH SYSTEM TEST SUMMARY")
+        print("=" * 80)
+        print(f"Total Tests: {self.tests_run}")
+        print(f"Passed: {self.tests_passed}")
+        print(f"Failed: {self.tests_run - self.tests_passed}")
+        print(f"Success Rate: {(self.tests_passed/self.tests_run*100):.1f}%")
+        
+        # Analyze specific failures
+        search_related_failures = []
+        for result in self.test_results:
+            if not result["success"] and any(keyword in result["test"].lower() for keyword in 
+                ["persistent", "search", "proximity", "edge", "12-pixel"]):
+                search_related_failures.append(result["test"])
+        
+        if search_related_failures:
+            print(f"\n❌ PERSISTENT SEARCH FAILURES DETECTED:")
+            for failure in search_related_failures:
+                print(f"   • {failure}")
+            print(f"\n🔍 RECOMMENDATION: Persistent search system needs attention")
+        else:
+            print(f"\n✅ NO PERSISTENT SEARCH FAILURES DETECTED")
+            print(f"🎉 Persistent search system appears to be fully functional")
+        
+        return self.tests_passed == self.tests_run
+
     def run_login_overlay_focused_tests(self):
         """Run tests specifically focused on the login overlay issue"""
         print("=" * 80)
