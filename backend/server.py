@@ -1030,83 +1030,105 @@ class TankpitBot:
             logging.error(f"Error in fast edge exploration: {e}")
     
     async def persistent_fuel_and_equipment_search(self):
-        """Never stop searching for fuel and equipment until safety threshold reached"""
+        """FAST persistent search - never stop until safety threshold reached"""
         try:
             if not self.page:
                 return False
                 
             current_fuel = await self.detect_fuel_level()
-            max_search_attempts = 20  # Maximum search attempts before using overview map
+            max_search_attempts = 25  # Increased attempts since each is faster
             search_attempt = 0
             
-            logging.info(f"Starting persistent search - current fuel: {current_fuel}%, target: {bot_state['settings']['safe_threshold']}%")
+            logging.info(f"FAST persistent search - current: {current_fuel}%, target: {bot_state['settings']['safe_threshold']}%")
             
             while current_fuel < bot_state["settings"]["safe_threshold"] and search_attempt < max_search_attempts:
                 search_attempt += 1
-                bot_state["status"] = f"persistent_search_attempt_{search_attempt}"
+                bot_state["status"] = f"fast_search_{search_attempt}"
                 
-                logging.info(f"Persistent search attempt {search_attempt}/{max_search_attempts}")
-                
-                # Step 1: Radar to find items
+                # Step 1: Fast radar scan
                 await self.page.keyboard.press("s")
-                await self.page.wait_for_timeout(2000)
+                await self.page.wait_for_timeout(500)  # Reduced from 2000ms to 500ms
                 
-                # Step 2: Look for fuel nodes and equipment
+                # Step 2: Quick detection and collection
                 fuel_nodes = await self.detect_fuel_nodes()
                 equipment_items = await self.detect_equipment_visually()
                 
                 items_found = len(fuel_nodes) + len(equipment_items)
-                logging.info(f"Found {len(fuel_nodes)} fuel nodes and {len(equipment_items)} equipment items")
                 
                 if items_found > 0:
-                    # Collect fuel first (priority)
+                    # Fast fuel collection
                     if fuel_nodes:
-                        await self.collect_fuel_from_nodes(fuel_nodes)
+                        await self.fast_collect_fuel_from_nodes(fuel_nodes)
                         
-                    # Then collect equipment
+                    # Fast equipment collection
                     if equipment_items:
-                        await self.collect_all_equipment()
+                        await self.fast_collect_equipment()
                     
-                    # Check fuel level after collection
+                    # Quick fuel check
                     current_fuel = await self.detect_fuel_level()
-                    logging.info(f"After collection - fuel: {current_fuel}%")
                     
                     if current_fuel >= bot_state["settings"]["safe_threshold"]:
-                        logging.info(f"Reached safety threshold: {current_fuel}% >= {bot_state['settings']['safe_threshold']}%")
-                        bot_state["status"] = "safety_threshold_reached"
+                        logging.info(f"FAST search success: {current_fuel}%")
+                        bot_state["status"] = "fast_search_complete"
                         return True
                         
                 else:
-                    # No items found - use search strategies
-                    if search_attempt % 3 == 0:  # Every 3rd attempt, try screen edge
-                        logging.info("No items found - trying screen edge exploration")
+                    # Fast search strategies
+                    if search_attempt % 3 == 0:
                         await self.move_to_screen_edge_and_radar()
                     else:
-                        # Check for "nothing detected" message
-                        if await self.detect_nothing_found_message():
-                            logging.info("Nothing detected message - trying 12-pixel proximity search")
-                            await self.perform_random_proximity_move()
-                        else:
-                            logging.info("No reachable items - trying 12-pixel proximity search")
-                            await self.perform_random_proximity_move()
+                        await self.perform_random_proximity_move()
                 
-                # Update fuel level for next iteration
+                # Quick fuel update
                 current_fuel = await self.detect_fuel_level()
                 
-                # Brief pause between search attempts
-                await self.page.wait_for_timeout(1000)
+                # Minimal pause between attempts
+                await self.page.wait_for_timeout(300)  # Reduced from 1000ms to 300ms
             
             if search_attempt >= max_search_attempts:
-                logging.info("Max search attempts reached - using overview map for new area")
-                bot_state["status"] = "max_search_attempts_reached"
+                logging.info("Fast search exhausted - using overview map")
                 await self.use_overview_map_for_fuel()
                 return False
             
             return True
             
         except Exception as e:
-            logging.error(f"Error in persistent fuel and equipment search: {e}")
+            logging.error(f"Error in fast persistent search: {e}")
             return False
+    
+    async def fast_collect_fuel_from_nodes(self, fuel_nodes):
+        """Fast fuel collection from detected nodes"""
+        try:
+            for i, fuel_node in enumerate(fuel_nodes[:5]):  # Limit to 5 for speed
+                # Quick click without long waits
+                await self.page.mouse.click(fuel_node['x'], fuel_node['y'])
+                await self.page.wait_for_timeout(400)  # Reduced from 1500ms to 400ms
+                
+                # Quick fuel check every 2 nodes
+                if i % 2 == 1:
+                    current_fuel = await self.detect_fuel_level()
+                    if current_fuel >= bot_state["settings"]["safe_threshold"]:
+                        logging.info(f"Fast fuel collection complete: {current_fuel}%")
+                        break
+            
+        except Exception as e:
+            logging.error(f"Error in fast fuel collection: {e}")
+    
+    async def fast_collect_equipment(self):
+        """Fast equipment collection"""
+        try:
+            equipment_items = await self.detect_equipment_visually()
+            
+            for i, equipment in enumerate(equipment_items[:5]):  # Limit for speed
+                await self.page.mouse.click(equipment['x'], equipment['y'])
+                await self.page.wait_for_timeout(300)  # Reduced from 1000ms to 300ms
+                
+                # Stop after collecting a few items to maintain speed
+                if i >= 4:
+                    break
+            
+        except Exception as e:
+            logging.error(f"Error in fast equipment collection: {e}")
     
     async def find_and_measure_fuel_bar(self, ui_area, total_width, total_height):
         """Find the actual fuel bar and measure its black vs colored portions"""
