@@ -186,6 +186,7 @@ class TankpitBot:
         except Exception as e:
             logging.error(f"Error dismissing login overlay: {e}")
     
+    async def start_browser(self):
         """Initialize browser and navigate to tankpit.com"""
         # Always clean up any existing browser first to avoid stale sessions
         await self.cleanup_browser()
