@@ -925,13 +925,13 @@ class TankpitBot:
             return False
     
     async def perform_random_proximity_move(self):
-        """Perform a small random 12-pixel teleport to search for items"""
+        """Perform a small random 12-pixel teleport to search for items - FAST VERSION"""
         try:
             if not self.page:
                 return
                 
-            logging.info("Nothing reachable - performing 12-pixel proximity search")
-            bot_state["status"] = "searching_proximity"
+            logging.info("Fast 12-pixel proximity search")
+            bot_state["status"] = "fast_proximity_search"
             
             # Take screenshot to get current screen center
             screenshot = await self.page.screenshot()
@@ -945,12 +945,12 @@ class TankpitBot:
             center_x = width // 2
             center_y = height // 2
             
-            # Generate random offset within 12 pixel radius (reduced from 15)
+            # Generate random offset within 12 pixel radius
             import random
             import math
             
-            angle = random.uniform(0, 2 * math.pi)  # Random angle
-            distance = random.uniform(5, 12)  # Random distance 5-12 pixels
+            angle = random.uniform(0, 2 * math.pi)
+            distance = random.uniform(5, 12)
             
             offset_x = int(distance * math.cos(angle))
             offset_y = int(distance * math.sin(angle))
@@ -962,29 +962,27 @@ class TankpitBot:
             target_x = max(50, min(width - 50, target_x))
             target_y = max(50, min(height - 50, target_y))
             
-            logging.info(f"12-pixel proximity move: clicking ({target_x}, {target_y}) - offset ({offset_x}, {offset_y})")
-            
-            # Click the random nearby location
+            # SPEED UP: Reduced wait times dramatically
             await self.page.mouse.click(target_x, target_y)
-            await self.page.wait_for_timeout(2000)
+            await self.page.wait_for_timeout(800)  # Reduced from 2000ms to 800ms
             
-            # After moving, press S again to radar
+            # Fast radar scan
             await self.page.keyboard.press("s")
-            await self.page.wait_for_timeout(2000)
+            await self.page.wait_for_timeout(600)  # Reduced from 2000ms to 600ms
             
-            logging.info("12-pixel proximity move completed")
+            logging.info(f"Fast 12-pixel move to ({target_x}, {target_y})")
             
         except Exception as e:
-            logging.error(f"Error in 12-pixel proximity move: {e}")
+            logging.error(f"Error in fast proximity move: {e}")
     
     async def move_to_screen_edge_and_radar(self):
-        """Move to edge of screen and radar for new area exploration"""
+        """Move to edge of screen and radar - FAST VERSION"""
         try:
             if not self.page:
                 return
                 
-            logging.info("Moving to screen edge for new area exploration")
-            bot_state["status"] = "exploring_screen_edge"
+            logging.info("Fast screen edge exploration")
+            bot_state["status"] = "fast_edge_exploration"
             
             # Take screenshot to get screen dimensions
             screenshot = await self.page.screenshot()
@@ -999,7 +997,7 @@ class TankpitBot:
             # Choose random edge: 0=top, 1=right, 2=bottom, 3=left
             import random
             edge = random.randint(0, 3)
-            margin = 30  # Stay away from very edge to avoid UI elements
+            margin = 30
             
             if edge == 0:  # Top edge
                 target_x = random.randint(margin, width - margin)
@@ -1018,20 +1016,18 @@ class TankpitBot:
                 target_y = random.randint(margin, height - margin)
                 edge_name = "left"
             
-            logging.info(f"Moving to {edge_name} edge at ({target_x}, {target_y})")
-            
-            # Click on the edge location
+            # SPEED UP: Much faster edge movement
             await self.page.mouse.click(target_x, target_y)
-            await self.page.wait_for_timeout(3000)  # Wait longer for screen transition
+            await self.page.wait_for_timeout(1200)  # Reduced from 3000ms to 1200ms
             
-            # Radar the new area
+            # Fast radar scan
             await self.page.keyboard.press("s")
-            await self.page.wait_for_timeout(2000)
+            await self.page.wait_for_timeout(600)  # Reduced from 2000ms to 600ms
             
-            logging.info(f"Completed {edge_name} edge exploration and radar")
+            logging.info(f"Fast {edge_name} edge exploration")
             
         except Exception as e:
-            logging.error(f"Error in screen edge exploration: {e}")
+            logging.error(f"Error in fast edge exploration: {e}")
     
     async def persistent_fuel_and_equipment_search(self):
         """Never stop searching for fuel and equipment until safety threshold reached"""
