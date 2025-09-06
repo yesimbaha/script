@@ -3320,6 +3320,19 @@ def main():
         except Exception as e:
             print(f"\n\n💥 Unexpected error: {str(e)}")
             return 1
+    # Check if we should run persistent search focused tests
+    elif len(sys.argv) > 1 and sys.argv[1] == "--persistent-search-focus":
+        print("🔍 Running PERSISTENT SEARCH SYSTEM tests as requested in review...")
+        tester = TankPitBotAPITester()
+        try:
+            success = tester.run_persistent_search_focused_tests()
+            return 0 if success else 1
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Tests interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n\n💥 Unexpected error: {str(e)}")
+            return 1
     # Check if we should run focused login tests
     elif len(sys.argv) > 1 and sys.argv[1] == "--login-focus":
         print("🎯 Running LOGIN-FOCUSED tests as requested in review...")
