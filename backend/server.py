@@ -2224,6 +2224,89 @@ class TankpitBot:
         except Exception as e:
             logging.error(f"Error in fast safe mode sequence: {e}")
     
+    async def fast_use_overview_map(self):
+        """Fast overview map usage for fuel searching"""
+        try:
+            logging.info("Fast overview map for fuel search")
+            bot_state["status"] = "fast_overview_map"
+            
+            # Quick map open
+            await self.page.keyboard.press("f")
+            await self.page.wait_for_timeout(1500)  # Reduced from 3000ms to 1500ms
+            
+            # Fast screenshot and bot detection
+            screenshot = await self.page.screenshot()
+            nparr = np.frombuffer(screenshot, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            # Quick bot position detection
+            bot_position = await self.find_bot_on_overview_map(img)
+            
+            if bot_position:
+                # Fast 15-pixel radius click
+                import random
+                offset_x = random.randint(-15, 15)
+                offset_y = random.randint(-15, 15)
+                
+                target_x = bot_position['x'] + offset_x
+                target_y = bot_position['y'] + offset_y
+                
+                await self.page.mouse.click(target_x, target_y)
+                await self.page.wait_for_timeout(2000)  # Reduced from 4000ms to 2000ms
+                
+                # Fast landing sequence
+                await self.fast_execute_landing_sequence()
+            else:
+                # Quick escape if bot not found
+                await self.page.keyboard.press("escape")
+                await self.page.wait_for_timeout(300)
+                
+        except Exception as e:
+            logging.error(f"Error in fast overview map: {e}")
+    
+    async def fast_execute_landing_sequence(self):
+        """Fast sequence after landing from overview map"""
+        try:
+            logging.info("Fast post-landing sequence")
+            bot_state["status"] = "fast_landing_sequence"
+            
+            # Fast equipment configuration
+            await self.fast_configure_equipment_settings()
+            
+            # Fast radar and mines
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(500)  # Reduced from 2000ms to 500ms
+            
+            await self.page.keyboard.press("d")
+            await self.page.wait_for_timeout(400)  # Reduced from 1500ms to 400ms
+            
+            # Fast fuel collection
+            await self.persistent_fuel_and_equipment_search()
+            
+        except Exception as e:
+            logging.error(f"Error in fast landing sequence: {e}")
+    
+    async def fast_configure_equipment_settings(self):
+        """Fast equipment configuration"""
+        try:
+            logging.info("Fast equipment configuration")
+            
+            # Fast equipment toggles with minimal waits
+            equipment_keys = ['a', 'w', 'm', 'h', 'r']
+            for key in equipment_keys:
+                await self.page.keyboard.press(key)
+                await self.page.wait_for_timeout(100)  # Reduced from 500ms to 100ms
+            
+            # Fast number key fallback
+            for key in ['1', '2', '3', '4', '5']:
+                await self.page.keyboard.press(key)
+                await self.page.wait_for_timeout(50)  # Reduced from 200ms to 50ms
+            
+            logging.info("Fast equipment config complete")
+            
+        except Exception as e:
+            logging.error(f"Error in fast equipment config: {e}")
+    
     async def execute_balanced_sequence(self):
         """FAST balanced sequence when fuel is in medium range"""
         try:
