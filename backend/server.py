@@ -1676,6 +1676,12 @@ class TankpitBot:
                         self.running = False
                         break
                 
+                # DEATH DETECTION - Check if bot has died
+                if await self.detect_death():
+                    logging.info("Death detected - handling respawn")
+                    await self.handle_death_and_respawn()
+                    continue  # Skip rest of cycle and restart
+                
                 # Update fuel level and position
                 current_fuel = await self.detect_fuel_level()
                 current_position = await self.detect_position()
