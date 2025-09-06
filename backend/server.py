@@ -101,7 +101,7 @@ class TankpitBot:
         try:
             playwright = await async_playwright().__aenter__()
             
-            # Launch fresh browser instance
+            # Launch fresh browser instance with improved resource management
             self.browser = await playwright.chromium.launch(
                 headless=False,
                 args=[
@@ -109,7 +109,13 @@ class TankpitBot:
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
                     '--remote-debugging-port=9222',
-                    '--display=:99'
+                    '--display=:99',
+                    '--memory-pressure-off',  # Prevent memory pressure crashes
+                    '--max_old_space_size=512',  # Limit memory usage
+                    '--disable-background-timer-throttling',  # Prevent timeouts
+                    '--disable-renderer-backgrounding',
+                    '--disable-features=TranslateUI',
+                    '--disable-ipc-flood-protection'
                 ]
             )
                 
