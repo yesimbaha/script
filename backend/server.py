@@ -2149,29 +2149,29 @@ class TankpitBot:
             return False
     
     async def execute_fuel_priority_sequence(self):
-        """Execute sequence when fuel is below refuel threshold - NEVER STOP UNTIL FULL"""
+        """FAST fuel priority sequence - NEVER STOP UNTIL FULL"""
         try:
             if not self.page:
                 logging.error("No page available for fuel priority sequence")
                 bot_state["status"] = "no_browser_session"
                 return
                 
-            bot_state["status"] = "fuel_priority_mode"
-            logging.info("Executing fuel priority sequence - PERSISTENT SEARCH UNTIL FULL")
+            bot_state["status"] = "fast_fuel_priority"
+            logging.info("FAST fuel priority - persistent search until full")
             
-            # Use persistent search - never stop until safety threshold reached
+            # Use fast persistent search
             search_successful = await self.persistent_fuel_and_equipment_search()
             
             if not search_successful:
-                # If persistent search failed after max attempts, try overview map
-                logging.info("Persistent search exhausted - using overview map as last resort")
-                await self.use_overview_map_for_fuel()
+                # Fast overview map fallback
+                logging.info("Fast persistent search exhausted - quick overview map")
+                await self.fast_use_overview_map()
                 
-                # Try persistent search again in new location
+                # Quick retry in new location
                 await self.persistent_fuel_and_equipment_search()
                 
         except Exception as e:
-            logging.error(f"Error in fuel priority sequence: {e}")
+            logging.error(f"Error in fast fuel priority sequence: {e}")
     
     async def collect_fuel_from_nodes(self, fuel_nodes):
         """Collect fuel from detected nodes"""
