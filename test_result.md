@@ -125,6 +125,33 @@ backend:
         - working: true
           agent: "main"
           comment: "FUEL DETECTION WORKING. User reported login failed - investigated and found Xvfb virtual display server was not running. Started Xvfb and reinstalled Playwright browsers. Login now working successfully. Both fuel detection improvements and login functionality are operational."
+        - working: true
+          agent: "main"
+          comment: "ENHANCED: Added visual fuel node detection using OpenCV analysis based on fuel.png image. Detects fuel nodes by yellow/golden colors, estimates values by size and brightness, and prioritizes collection by value. All 9 fuel detection methods (6 existing + 3 new) working correctly."
+
+  - task: "Implement enhanced bot sequence logic"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "IMPLEMENTED: Complete bot sequence overhaul based on user requirements. Added 4 enhanced sequence functions: 1) perform_initial_join_sequence - S key, fuel to threshold, equipment collection, 2) execute_fuel_priority_sequence - low fuel behavior with map usage, 3) execute_safe_mode_sequence - high fuel stationary mode, 4) execute_balanced_sequence - medium fuel balanced approach. Also added overview map functionality (F key), bot position detection, and prioritized fuel/equipment collection."
+
+  - task: "Implement visual equipment detection"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "IMPLEMENTED: Enhanced equipment detection using visual analysis based on eq.png image. Uses OpenCV to detect brown/orange/metallic equipment colors, filters by size and aspect ratio, avoids UI elements, and prioritizes by size. Replaces generic selector-based detection with accurate visual recognition."
 
   - task: "Fix login functionality"
     implemented: true
