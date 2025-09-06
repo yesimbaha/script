@@ -1464,6 +1464,11 @@ class TankpitBot:
     async def execute_fuel_priority_sequence(self):
         """Execute sequence when fuel is below refuel threshold"""
         try:
+            if not self.page:
+                logging.error("No page available for fuel priority sequence")
+                bot_state["status"] = "no_browser_session"
+                return
+                
             bot_state["status"] = "fuel_priority_mode"
             logging.info("Executing fuel priority sequence")
             
@@ -1488,6 +1493,11 @@ class TankpitBot:
     async def execute_safe_mode_sequence(self):
         """Execute sequence when fuel is above safe threshold"""
         try:
+            if not self.page:
+                logging.error("No page available for safe mode sequence")
+                bot_state["status"] = "no_browser_session"
+                return
+                
             bot_state["status"] = "safe_mode_stationary"
             logging.info("Executing safe mode sequence - staying stationary")
             
@@ -1510,6 +1520,11 @@ class TankpitBot:
     async def execute_balanced_sequence(self):
         """Execute sequence when fuel is in medium range"""
         try:
+            if not self.page:
+                logging.error("No page available for balanced sequence")
+                bot_state["status"] = "no_browser_session"
+                return
+                
             bot_state["status"] = "balanced_mode"
             logging.info("Executing balanced mode sequence")
             
