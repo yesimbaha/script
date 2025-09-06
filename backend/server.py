@@ -1011,27 +1011,145 @@ class TankpitBot:
             logging.error(f"Failed to enter game: {e}")
             return False
     
-    async def activate_bot_and_mine(self):
-        """Activate bot and mine features on new screen"""
+    async def perform_screen_entry_sequence(self):
+        """Complete sequence to perform after landing on a new screen"""
         try:
-            # Look for bot button
-            bot_button = await self.page.query_selector("button:has-text('bot'), .bot-button, [data-action='bot']")
-            if bot_button:
-                await bot_button.click()
-                await self.page.wait_for_timeout(1000)
-                logging.info("Activated bot feature")
+            logging.info("Starting screen entry sequence...")
+            bot_state["status"] = "screen_entry_sequence"
             
-            # Look for mine button  
-            mine_button = await self.page.query_selector("button:has-text('mine'), .mine-button, [data-action='mine']")
-            if mine_button:
-                await mine_button.click()
-                await self.page.wait_for_timeout(1000)
-                logging.info("Activated mine feature")
-                
+            # Step 1: Press "S" to use radar - refresh screen of fuel and equipment, avoid ghosts
+            logging.info("Step 1: Pressing S to use radar and refresh screen")
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(2000)  # Wait for radar to refresh
+            bot_state["status"] = "radar_used"
+            
+            # Step 2: Press "D" to lay mines for defense
+            logging.info("Step 2: Pressing D to lay defensive mines")
+            await self.page.keyboard.press("d")
+            await self.page.wait_for_timeout(1500)  # Wait for mines to be laid
+            bot_state["status"] = "mines_laid"
+            
+            # Step 3: Check fuel and move to fuel if needed (before equipment collection)
+            current_fuel = await self.detect_fuel_level()
+            bot_state["current_fuel"] = current_fuel
+            
+            if current_fuel <= bot_state["settings"]["refuel_threshold"]:
+                logging.info(f"Step 3: Fuel at {current_fuel}%, moving to fuel first")
+                bot_state["status"] = "priority_refueling"
+                await self.collect_fuel_canisters()
+            else:
+                logging.info(f"Step 3: Fuel sufficient at {current_fuel}%, proceeding to equipment")
+            
+            # Step 4: Collect all equipment on screen until inventory is full
+            logging.info("Step 4: Collecting all equipment on screen")
+            bot_state["status"] = "collecting_equipment"
+            await self.collect_all_equipment()
+            
+            logging.info("Screen entry sequence completed successfully")
+            bot_state["status"] = "sequence_complete"
             return True
+            
         except Exception as e:
-            logging.error(f"Failed to activate bot/mine: {e}")
+            logging.error(f"Error in screen entry sequence: {e}")
+            bot_state["status"] = f"sequence_error: {str(e)}"
             return False
+    
+    async def collect_fuel_canisters(self):
+        """Collect fuel canisters until fuel is sufficient"""
+        try:
+            fuel_collected = 0
+            max_attempts = 10  # Prevent infinite loops
+            
+            for attempt in range(max_attempts):
+                current_fuel = await self.detect_fuel_level()
+                
+                # If fuel is sufficient, stop collecting
+                if current_fuel >= bot_state["settings"]["safe_threshold"]:
+                    logging.info(f"Fuel sufficient at {current_fuel}%, stopping fuel collection")
+                    break
+                
+                # Find and click fuel canister
+                fuel_canister = await self.find_fuel_canisters()
+                if fuel_canister:
+                    await fuel_canister.click()
+                    await self.page.wait_for_timeout(1500)  # Wait for collection
+                    fuel_collected += 1
+                    logging.info(f"Collected fuel canister #{fuel_collected}")
+                else:
+                    logging.info("No more fuel canisters found on screen")
+                    break
+                    
+        except Exception as e:
+            logging.error(f"Error collecting fuel canisters: {e}")
+    
+    async def collect_all_equipment(self):
+        """Collect all equipment on screen until inventory is full"""
+        try:
+            equipment_collected = 0
+            max_attempts = 20  # Prevent infinite loops
+            
+            # Equipment selectors - these might need adjustment based on tankpit.com's actual interface
+            equipment_selectors = [
+                # Common equipment indicators
+                '.equipment', '.item', '.pickup',
+                '[class*="equipment"]', '[class*="item"]', '[class*="weapon"]',
+                '[class*="armor"]', '[class*="shield"]', '[class*="tool"]',
+                # Visual indicators that might represent equipment
+                'img[alt*="equipment"]', 'img[alt*="item"]', 'img[alt*="weapon"]',
+                # Clickable elements that might be equipment
+                'div[onclick*="pickup"]', 'div[onclick*="collect"]',
+                # Generic clickable elements in game area (be careful with this)
+                '.game-item', '.collectible'
+            ]
+            
+            for attempt in range(max_attempts):
+                equipment_found = False
+                
+                # Try each equipment selector
+                for selector in equipment_selectors:
+                    try:
+                        equipment_elements = await self.page.query_selector_all(selector)
+                        
+                        for equipment in equipment_elements:
+                            if not await equipment.is_visible():
+                                continue
+                                
+                            # Try to click the equipment
+                            try:
+                                await equipment.click()
+                                await self.page.wait_for_timeout(1000)  # Wait for pickup
+                                equipment_collected += 1
+                                equipment_found = True
+                                logging.info(f"Collected equipment item #{equipment_collected} using selector: {selector}")
+                                
+                                # Check if inventory might be full (this is game-specific)
+                                # For now, we'll rely on max_attempts to prevent infinite loops
+                                
+                            except Exception as e:
+                                # Equipment might not be clickable or already collected
+                                continue
+                                
+                        if equipment_found:
+                            break  # Found equipment with this selector, continue outer loop
+                            
+                    except Exception as e:
+                        continue  # Try next selector
+                
+                # If no equipment found with any selector, we're probably done
+                if not equipment_found:
+                    logging.info("No more equipment found on screen")
+                    break
+                    
+            logging.info(f"Equipment collection complete. Collected {equipment_collected} items")
+            
+        except Exception as e:
+            logging.error(f"Error collecting equipment: {e}")
+    
+    async def activate_bot_and_mine(self):
+        """Activate bot and mine features on new screen - DEPRECATED, replaced by perform_screen_entry_sequence"""
+        # This function is now replaced by the more comprehensive perform_screen_entry_sequence
+        # Keeping for compatibility but redirecting to new function
+        return await self.perform_screen_entry_sequence()
     
     async def find_fuel_canisters(self):
         """Find fuel canisters on screen and return the one with most fuel"""
