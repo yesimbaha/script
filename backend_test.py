@@ -242,10 +242,19 @@ class TankPitBotAPITester:
         print(f"Testing against: {self.base_url}")
         print(f"API Base URL: {self.api_url}")
         
+        # Test server health first
+        print("\n🏥 TESTING SERVER HEALTH...")
+        self.test_server_health()
+        
         # Test basic endpoints first
         print("\n📋 TESTING BASIC ENDPOINTS...")
         self.test_bot_status()
         self.test_bot_settings_update()
+        
+        # Test NEW fuel detection system
+        print("\n⛽ TESTING NEW FUEL DETECTION SYSTEM...")
+        self.test_fuel_detection_endpoint()
+        self.test_screenshot_endpoint()
         
         # Test bot control endpoints
         print("\n🤖 TESTING BOT CONTROL ENDPOINTS...")
