@@ -1940,31 +1940,158 @@ class TankpitBot:
             logging.error(f"Error detecting fuel nodes: {e}")
             return []
     
-    async def collect_prioritized_fuel(self, fuel_nodes, limit=None):
-        """Collect fuel from nodes in priority order"""
+    async def detect_death(self):
+        """Detect if the bot has died and needs to respawn"""
         try:
-            collected = 0
-            max_collect = limit or len(fuel_nodes)
+            if not self.page:
+                return False
+                
+            # Take screenshot to analyze for death indicators
+            screenshot = await self.page.screenshot()
+            nparr = np.frombuffer(screenshot, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
-            for fuel_node in fuel_nodes[:max_collect]:
-                current_fuel = await self.detect_fuel_level()
-                
-                # Stop if we've reached safety threshold
-                if current_fuel >= bot_state["settings"]["safe_threshold"]:
-                    logging.info(f"Reached safety threshold ({current_fuel}%), stopping fuel collection")
-                    break
-                
-                # Click on the fuel node
-                await self.page.mouse.click(fuel_node['x'], fuel_node['y'])
-                await self.page.wait_for_timeout(1500)
-                
-                collected += 1
-                logging.info(f"Collected fuel node {collected} (estimated value: {fuel_node['estimated_value']})")
+            if img is None:
+                return False
             
-            logging.info(f"Collected fuel from {collected} nodes")
+            # Method 1: Look for death-related text
+            page_content = await self.page.content()
+            death_indicators = [
+                "you have been destroyed",
+                "you died", 
+                "game over",
+                "destroyed",
+                "respawn",
+                "press any key",
+                "click to continue"
+            ]
+            
+            content_lower = page_content.lower()
+            for indicator in death_indicators:
+                if indicator in content_lower:
+                    logging.info(f"Death detected: found text '{indicator}'")
+                    return True
+            
+            # Method 2: Look for visual death indicators (dark screen, etc.)
+            # Convert to grayscale and check if screen is mostly dark
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            mean_brightness = np.mean(gray)
+            
+            # If screen is very dark (death screen), consider it death
+            if mean_brightness < 30:  # Very dark screen
+                logging.info(f"Death detected: screen very dark (brightness: {mean_brightness})")
+                return True
+            
+            return False
             
         except Exception as e:
-            logging.error(f"Error collecting prioritized fuel: {e}")
+            logging.error(f"Error detecting death: {e}")
+            return False
+    
+    async def handle_death_and_respawn(self):
+        """Handle death by pressing Q to quit and restarting"""
+        try:
+            logging.info("Handling death - pressing Q to quit")
+            bot_state["status"] = "handling_death"
+            await self.broadcast_status()
+            
+            # Press Q to quit the current map
+            await self.page.keyboard.press("q")
+            await self.page.wait_for_timeout(3000)
+            
+            # Wait a moment for the quit to process
+            await self.page.wait_for_timeout(2000)
+            
+            # Use overview map to restart in a new location
+            logging.info("Respawning - using overview map for new location")
+            await self.use_overview_map_for_fuel()
+            
+            logging.info("Death handling complete - resuming normal operations")
+            bot_state["status"] = "respawned"
+            
+        except Exception as e:
+            logging.error(f"Error handling death and respawn: {e}")
+            bot_state["status"] = f"death_handling_error: {str(e)}"
+    
+    async def detect_nothing_found_message(self):
+        """Detect if radar shows 'nothing detected here' message"""
+        try:
+            if not self.page:
+                return False
+                
+            page_content = await self.page.content()
+            nothing_found_indicators = [
+                "nothing detected here",
+                "nothing found",
+                "no targets detected",
+                "area clear",
+                "nothing detected"
+            ]
+            
+            content_lower = page_content.lower()
+            for indicator in nothing_found_indicators:
+                if indicator in content_lower:
+                    logging.info(f"Nothing detected message found: '{indicator}'")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logging.error(f"Error detecting nothing found message: {e}")
+            return False
+    
+    async def perform_random_proximity_move(self):
+        """Perform a small random 15-pixel teleport to search for items"""
+        try:
+            if not self.page:
+                return
+                
+            logging.info("Nothing detected - performing random proximity move")
+            bot_state["status"] = "searching_proximity"
+            
+            # Take screenshot to get current screen center
+            screenshot = await self.page.screenshot()
+            nparr = np.frombuffer(screenshot, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                return
+                
+            height, width = img.shape[:2]
+            center_x = width // 2
+            center_y = height // 2
+            
+            # Generate random offset within 15 pixel radius
+            import random
+            import math
+            
+            angle = random.uniform(0, 2 * math.pi)  # Random angle
+            distance = random.uniform(5, 15)  # Random distance 5-15 pixels
+            
+            offset_x = int(distance * math.cos(angle))
+            offset_y = int(distance * math.sin(angle))
+            
+            target_x = center_x + offset_x
+            target_y = center_y + offset_y
+            
+            # Ensure target is within screen bounds
+            target_x = max(50, min(width - 50, target_x))
+            target_y = max(50, min(height - 50, target_y))
+            
+            logging.info(f"Random proximity move: clicking ({target_x}, {target_y}) - offset ({offset_x}, {offset_y})")
+            
+            # Click the random nearby location
+            await self.page.mouse.click(target_x, target_y)
+            await self.page.wait_for_timeout(2000)
+            
+            # After moving, press S again to radar
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(2000)
+            
+            logging.info("Random proximity move completed")
+            
+        except Exception as e:
+            logging.error(f"Error in random proximity move: {e}")
     
     async def collect_fuel_until_safe(self):
         """Collect fuel until reaching safety threshold"""
