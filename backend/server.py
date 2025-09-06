@@ -154,158 +154,193 @@ class TankpitBot:
             logging.error(f"Error cleaning up browser: {e}")
         
     async def login(self, username: str, password: str):
-        """Login to tankpit.com with improved error handling"""
-        try:
-            # Start fresh browser session
-            if not await self.start_browser():
-                return False
+        """Login to tankpit.com with improved error handling and browser session management"""
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                logging.info(f"Login attempt {attempt + 1}/{max_retries}")
                 
-            # Wait for page to fully load and verify we're on the right page
-            await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
-            
-            # Take screenshot for debugging
-            await self.page.screenshot(path="/tmp/tankpit_before_login.png")
-            
-            # Verify page content
-            page_content = await self.page.content()
-            if "header-login" not in page_content:
-                logging.error("Page doesn't contain expected login elements")
-                # Try refreshing the page
-                await self.page.reload()
-                await self.page.wait_for_load_state("networkidle", timeout=10000)
+                # Start fresh browser session
+                if not await self.start_browser():
+                    logging.error(f"Failed to start browser on attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2)  # Wait before retry
+                        continue
+                    return False
+                
+                # Check if browser is still alive
+                if not self.browser or not self.page:
+                    logging.error("Browser or page is None after startup")
+                    if attempt < max_retries - 1:
+                        continue
+                    return False
+                    
+                # Wait for page to fully load and verify we're on the right page
+                await self.page.wait_for_load_state("domcontentloaded", timeout=15000)
+                
+                # Take screenshot for debugging
+                await self.page.screenshot(path="/tmp/tankpit_before_login.png")
+                
+                # Verify page content
                 page_content = await self.page.content()
-            
-            # TankPit.com specific: Click the header login link to show the overlay
-            login_clicked = False
-            
-            # Try multiple approaches to find and click the login link
-            login_selectors = [
-                '#header-login',
-                'a[href="#login"]',
-                'a:has-text("Log in")',
-                'a:has-text("Login")'
-            ]
-            
-            for selector in login_selectors:
+                if "header-login" not in page_content:
+                    logging.error("Page doesn't contain expected login elements")
+                    # Try refreshing the page
+                    await self.page.reload()
+                    await self.page.wait_for_load_state("networkidle", timeout=10000)
+                    page_content = await self.page.content()
+                
+                # TankPit.com specific: Click the header login link to show the overlay
+                login_clicked = False
+                
+                # Try multiple approaches to find and click the login link
+                login_selectors = [
+                    '#header-login',
+                    'a[href="#login"]',
+                    'a:has-text("Log in")',
+                    'a:has-text("Login")'
+                ]
+                
+                for selector in login_selectors:
+                    try:
+                        header_login = await self.page.wait_for_selector(selector, timeout=3000)
+                        if header_login:
+                            # Check if element is visible and clickable
+                            is_visible = await header_login.is_visible()
+                            if is_visible:
+                                await header_login.click()
+                                logging.info(f"Clicked login link with selector: {selector}")
+                                login_clicked = True
+                                break
+                            else:
+                                logging.warning(f"Login element found but not visible: {selector}")
+                    except Exception as e:
+                        logging.warning(f"Could not find login element with selector {selector}: {e}")
+                        continue
+                
+                if not login_clicked:
+                    logging.error("Could not find any clickable login elements")
+                    if attempt < max_retries - 1:
+                        continue
+                    return False
+                    
+                # Wait for login overlay to appear
+                await self.page.wait_for_timeout(2000)
+                
+                # Now look for the login form fields
+                username_field = None
+                password_field = None
+                
+                # TankPit.com specific selectors
                 try:
-                    header_login = await self.page.wait_for_selector(selector, timeout=3000)
-                    if header_login:
-                        # Check if element is visible and clickable
-                        is_visible = await header_login.is_visible()
-                        if is_visible:
-                            await header_login.click()
-                            logging.info(f"Clicked login link with selector: {selector}")
-                            login_clicked = True
-                            break
-                        else:
-                            logging.warning(f"Login element found but not visible: {selector}")
+                    username_field = await self.page.wait_for_selector('#login-username', timeout=5000)
+                    logging.info("Found tankpit.com username field: #login-username")
                 except Exception as e:
-                    logging.warning(f"Could not find login element with selector {selector}: {e}")
+                    logging.error(f"Could not find username field: {e}")
+                    # Take screenshot for debugging
+                    await self.page.screenshot(path="/tmp/tankpit_no_username.png")
+                    if attempt < max_retries - 1:
+                        continue
+                    return False
+                
+                try:
+                    password_field = await self.page.wait_for_selector('#login input[name="password"][type="password"]', timeout=5000)
+                    logging.info("Found tankpit.com password field")
+                except Exception as e:
+                    logging.error(f"Could not find password field: {e}")
+                    # Take screenshot for debugging
+                    await self.page.screenshot(path="/tmp/tankpit_no_password.png")
+                    if attempt < max_retries - 1:
+                        continue
+                    return False
+                
+                # Fill in credentials
+                await username_field.fill(username)
+                await password_field.fill(password)
+                logging.info("Filled in credentials")
+                
+                # Look for submit button
+                try:
+                    submit_button = await self.page.wait_for_selector('#login input[type="submit"]', timeout=5000)
+                    logging.info("Found submit button")
+                    await submit_button.click()
+                    logging.info("Clicked submit button")
+                    await self.page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception as e:
+                    logging.error(f"Could not find or click submit button: {e}")
+                    # Try pressing Enter on password field as backup
+                    await password_field.press('Enter')
+                    await self.page.wait_for_load_state("networkidle", timeout=15000)
+                
+                # Check if login was successful
+                current_url = self.page.url
+                page_content = await self.page.content()
+                
+                # Take screenshot after login attempt
+                await self.page.screenshot(path="/tmp/tankpit_after_login_attempt.png")
+                
+                # TankPit specific success indicators
+                if ("dashboard" in current_url.lower() or 
+                    "game" in current_url.lower() or 
+                    "play" in current_url.lower() or
+                    "welcome" in page_content.lower() or
+                    "logout" in page_content.lower() or
+                    f"Logged in: {username}" in page_content):
+                    logging.info("Login appears successful based on page content")
+                    return True
+                
+                # Check for error messages in the login form
+                try:
+                    error_elements = await self.page.query_selector_all('#login .error, #login .message, .alert-error')
+                    if error_elements:
+                        for error_elem in error_elements:
+                            error_text = await error_elem.inner_text()
+                            if error_text.strip():
+                                logging.error(f"Login error detected: {error_text}")
+                                if attempt < max_retries - 1:
+                                    continue
+                                return False
+                except:
+                    pass
+                
+                # Check if login overlay disappeared (success indicator)
+                try:
+                    login_overlay = await self.page.query_selector('#login.overlay')
+                    if login_overlay:
+                        overlay_visible = await login_overlay.is_visible()
+                        if not overlay_visible:
+                            logging.info("Login overlay disappeared, login likely successful")
+                            return True
+                        else:
+                            logging.error("Login overlay still visible, login likely failed")
+                            if attempt < max_retries - 1:
+                                continue
+                            return False
+                except:
+                    pass
+                
+                # Final check - look for user info in page content
+                if f"Logged in: {username}" in page_content or username in page_content:
+                    logging.info("Found username in page content, login successful")
+                    return True
+                
+                logging.error("Login failed - no success indicators found")
+                if attempt < max_retries - 1:
+                    logging.info("Retrying login...")
                     continue
-            
-            if not login_clicked:
-                logging.error("Could not find any clickable login elements")
                 return False
                 
-            # Wait for login overlay to appear
-            await self.page.wait_for_timeout(2000)
-            
-            # Now look for the login form fields
-            username_field = None
-            password_field = None
-            
-            # TankPit.com specific selectors
-            try:
-                username_field = await self.page.wait_for_selector('#login-username', timeout=5000)
-                logging.info("Found tankpit.com username field: #login-username")
             except Exception as e:
-                logging.error(f"Could not find username field: {e}")
-                # Take screenshot for debugging
-                await self.page.screenshot(path="/tmp/tankpit_no_username.png")
+                logging.error(f"Login attempt {attempt + 1} failed with exception: {e}")
+                await self.cleanup_browser()
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)  # Wait before retry
+                    continue
                 return False
-            
-            try:
-                password_field = await self.page.wait_for_selector('#login input[name="password"][type="password"]', timeout=5000)
-                logging.info("Found tankpit.com password field")
-            except Exception as e:
-                logging.error(f"Could not find password field: {e}")
-                # Take screenshot for debugging
-                await self.page.screenshot(path="/tmp/tankpit_no_password.png")
-                return False
-            
-            # Fill in credentials
-            await username_field.fill(username)
-            await password_field.fill(password)
-            logging.info("Filled in credentials")
-            
-            # Look for submit button
-            try:
-                submit_button = await self.page.wait_for_selector('#login input[type="submit"]', timeout=5000)
-                logging.info("Found submit button")
-                await submit_button.click()
-                logging.info("Clicked submit button")
-                await self.page.wait_for_load_state("networkidle", timeout=15000)
-            except Exception as e:
-                logging.error(f"Could not find or click submit button: {e}")
-                # Try pressing Enter on password field as backup
-                await password_field.press('Enter')
-                await self.page.wait_for_load_state("networkidle", timeout=15000)
-            
-            # Check if login was successful
-            current_url = self.page.url
-            page_content = await self.page.content()
-            
-            # Take screenshot after login attempt
-            await self.page.screenshot(path="/tmp/tankpit_after_login_attempt.png")
-            
-            # TankPit specific success indicators
-            if ("dashboard" in current_url.lower() or 
-                "game" in current_url.lower() or 
-                "play" in current_url.lower() or
-                "welcome" in page_content.lower() or
-                "logout" in page_content.lower() or
-                f"Logged in: {username}" in page_content):
-                logging.info("Login appears successful based on page content")
-                return True
-            
-            # Check for error messages in the login form
-            try:
-                error_elements = await self.page.query_selector_all('#login .error, #login .message, .alert-error')
-                if error_elements:
-                    for error_elem in error_elements:
-                        error_text = await error_elem.inner_text()
-                        if error_text.strip():
-                            logging.error(f"Login error detected: {error_text}")
-                            return False
-            except:
-                pass
-            
-            # Check if login overlay disappeared (success indicator)
-            try:
-                login_overlay = await self.page.query_selector('#login.overlay')
-                if login_overlay:
-                    overlay_visible = await login_overlay.is_visible()
-                    if not overlay_visible:
-                        logging.info("Login overlay disappeared, login likely successful")
-                        return True
-                    else:
-                        logging.error("Login overlay still visible, login likely failed")
-                        return False
-            except:
-                pass
-            
-            # Final check - look for user info in page content
-            if f"Logged in: {username}" in page_content or username in page_content:
-                logging.info("Found username in page content, login successful")
-                return True
-            
-            logging.error("Login failed - no success indicators found")
-            return False
-            
-        except Exception as e:
-            logging.error(f"Login failed with exception: {e}")
-            await self.cleanup_browser()
-            return False
+        
+        # If we get here, all attempts failed
+        logging.error("All login attempts failed")
+        return False
     
     async def get_available_tanks(self):
         """Get list of tanks available on the account"""
