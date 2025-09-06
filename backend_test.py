@@ -175,6 +175,43 @@ class TankPitBotAPITester:
             expected_status=500  # Expecting 500 since no browser session
         )
 
+    def test_fuel_detection_endpoint(self):
+        """Test GET /api/bot/fuel - New fuel detection system"""
+        return self.run_api_test(
+            "Fuel Detection Endpoint",
+            "GET",
+            "bot/fuel",
+            expected_status=500  # Expecting 500 since no browser session exists
+        )
+
+    def test_screenshot_endpoint(self):
+        """Test GET /api/bot/screenshot"""
+        return self.run_api_test(
+            "Screenshot Endpoint",
+            "GET", 
+            "bot/screenshot",
+            expected_status=500  # Expecting 500 since no browser session exists
+        )
+
+    def test_server_health(self):
+        """Test server health and startup"""
+        try:
+            print(f"\n🔍 Testing Server Health...")
+            print(f"   Checking if server is running at: {self.base_url}")
+            
+            # Test basic connectivity
+            response = requests.get(self.base_url, timeout=10)
+            
+            if response.status_code in [200, 404, 405]:  # Server is responding
+                return self.log_result("Server Health", True, f"Server is running (HTTP {response.status_code})")
+            else:
+                return self.log_result("Server Health", False, f"Server returned unexpected status: {response.status_code}")
+                
+        except requests.exceptions.ConnectionError:
+            return self.log_result("Server Health", False, "Server is not running or not accessible")
+        except Exception as e:
+            return self.log_result("Server Health", False, f"Health check error: {str(e)}")
+
     def test_websocket_endpoint(self):
         """Test WebSocket endpoint accessibility"""
         # We can't easily test WebSocket with requests, but we can check if the endpoint exists
