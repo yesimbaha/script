@@ -1209,6 +1209,10 @@ class TankpitBot:
     async def detect_equipment_visually(self):
         """Detect equipment items using visual analysis based on equipment image characteristics"""
         try:
+            if not self.page:
+                logging.error("No page available for equipment detection")
+                return []
+                
             # Take screenshot for analysis
             screenshot = await self.page.screenshot()
             nparr = np.frombuffer(screenshot, np.uint8)
