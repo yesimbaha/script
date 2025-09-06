@@ -1319,6 +1319,27 @@ async def get_tanks():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/bot/screenshot")
+async def get_bot_screenshot():
+    """Get current screenshot of bot's screen"""
+    try:
+        if not tankpit_bot.page:
+            raise HTTPException(status_code=400, detail="Bot not in game")
+        
+        # Take screenshot
+        screenshot = await tankpit_bot.page.screenshot()
+        
+        # Convert to base64 for web display
+        screenshot_b64 = base64.b64encode(screenshot).decode('utf-8')
+        
+        return {
+            "success": True, 
+            "screenshot": f"data:image/png;base64,{screenshot_b64}",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/bot/maps")
 async def get_maps():
     """Get available maps"""
