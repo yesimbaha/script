@@ -577,17 +577,33 @@ class TankPitBotAPITester:
 
 def main():
     """Main test function"""
-    tester = TankPitBotAPITester()
+    import sys
     
-    try:
-        success = tester.run_all_tests()
-        return 0 if success else 1
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Tests interrupted by user")
-        return 1
-    except Exception as e:
-        print(f"\n\n💥 Unexpected error: {str(e)}")
-        return 1
+    # Check if we should run focused login tests
+    if len(sys.argv) > 1 and sys.argv[1] == "--login-focus":
+        print("🎯 Running LOGIN-FOCUSED tests as requested in review...")
+        tester = TankPitBotAPITester()
+        try:
+            success = tester.run_login_focused_tests()
+            return 0 if success else 1
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Tests interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n\n💥 Unexpected error: {str(e)}")
+            return 1
+    else:
+        # Run all tests
+        tester = TankPitBotAPITester()
+        try:
+            success = tester.run_all_tests()
+            return 0 if success else 1
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Tests interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n\n💥 Unexpected error: {str(e)}")
+            return 1
 
 if __name__ == "__main__":
     sys.exit(main())
