@@ -458,10 +458,26 @@ class TankPitBotAPITester:
         print("\n🏥 TESTING SERVER HEALTH...")
         self.test_server_health()
         
+        # Test Xvfb integration (critical for login fix)
+        print("\n🖥️  TESTING XVFB INTEGRATION...")
+        self.test_xvfb_integration()
+        
+        # Test Playwright browser startup
+        print("\n🌐 TESTING PLAYWRIGHT BROWSER STARTUP...")
+        self.test_playwright_browser_startup()
+        
         # Test basic endpoints first
         print("\n📋 TESTING BASIC ENDPOINTS...")
         self.test_bot_status()
         self.test_bot_settings_update()
+        
+        # Test COMPREHENSIVE LOGIN FUNCTIONALITY (main focus)
+        print("\n🔐 TESTING LOGIN FUNCTIONALITY (POST-XVFB FIX)...")
+        self.test_bot_login_comprehensive()
+        
+        # Test tank detection after login
+        print("\n🎯 TESTING TANK DETECTION...")
+        self.test_tank_detection_after_login()
         
         # Test NEW fuel detection system
         print("\n⛽ TESTING NEW FUEL DETECTION SYSTEM...")
@@ -475,8 +491,7 @@ class TankPitBotAPITester:
         self.test_stop_bot()
         
         # Test browser-dependent endpoints (these may fail)
-        print("\n🌐 TESTING BROWSER-DEPENDENT ENDPOINTS...")
-        self.test_bot_login()
+        print("\n🌐 TESTING OTHER BROWSER-DEPENDENT ENDPOINTS...")
         self.test_get_tanks()
         self.test_select_tank()
         
@@ -486,6 +501,53 @@ class TankPitBotAPITester:
         
         # Print summary
         self.print_summary()
+        
+        return self.tests_passed == self.tests_run
+
+    def run_login_focused_tests(self):
+        """Run only login-focused tests as requested in review"""
+        print("=" * 60)
+        print("🔐 FOCUSED LOGIN FUNCTIONALITY TESTING")
+        print("=" * 60)
+        print(f"Testing against: {self.base_url}")
+        print(f"API Base URL: {self.api_url}")
+        print("Focus: Verifying login fix after Xvfb resolution")
+        
+        # Test server health first
+        print("\n🏥 TESTING SERVER HEALTH...")
+        self.test_server_health()
+        
+        # Test Xvfb integration (critical for login fix)
+        print("\n🖥️  TESTING XVFB INTEGRATION...")
+        xvfb_result = self.test_xvfb_integration()
+        
+        # Test Playwright browser startup
+        print("\n🌐 TESTING PLAYWRIGHT BROWSER STARTUP...")
+        playwright_result = self.test_playwright_browser_startup()
+        
+        # Test COMPREHENSIVE LOGIN FUNCTIONALITY (main focus)
+        print("\n🔐 TESTING LOGIN FUNCTIONALITY (POST-XVFB FIX)...")
+        login_result = self.test_bot_login_comprehensive()
+        
+        # Test tank detection after login
+        print("\n🎯 TESTING TANK DETECTION AFTER LOGIN...")
+        tank_result = self.test_tank_detection_after_login()
+        
+        # Print focused summary
+        print("\n" + "=" * 60)
+        print("🎯 LOGIN-FOCUSED TEST SUMMARY")
+        print("=" * 60)
+        print(f"Total Tests: {self.tests_run}")
+        print(f"Passed: {self.tests_passed}")
+        print(f"Failed: {self.tests_run - self.tests_passed}")
+        print(f"Success Rate: {(self.tests_passed/self.tests_run*100):.1f}%")
+        
+        # Key results
+        print(f"\n🔑 KEY RESULTS:")
+        print(f"   • Xvfb Integration: {'✅ PASS' if xvfb_result else '❌ FAIL'}")
+        print(f"   • Playwright Browser: {'✅ PASS' if playwright_result else '❌ FAIL'}")
+        print(f"   • Login API: {'✅ PASS' if login_result else '❌ FAIL'}")
+        print(f"   • Tank Detection: {'✅ PASS' if tank_result else '❌ FAIL'}")
         
         return self.tests_passed == self.tests_run
 
