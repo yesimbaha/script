@@ -287,6 +287,7 @@ class TankpitBot:
                     "logout" in page_content.lower() or
                     f"Logged in: {username}" in page_content):
                     logging.info("Login appears successful based on page content")
+                    logging.info(f"Success detected - URL: {current_url}, returning True")
                     return True
                 
                 # Check for error messages in the login form
