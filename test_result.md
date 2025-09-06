@@ -222,7 +222,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Enhanced bot sequence logic and improved detection systems"
+    - "Fix bot tracking issues - page validation and error handling"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
