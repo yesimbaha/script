@@ -1400,6 +1400,19 @@ class TankpitBot:
         
         while self.running:
             try:
+                # Check if we still have a valid browser session
+                if not self.page or not self.browser:
+                    logging.error("Lost browser session, attempting to reconnect...")
+                    bot_state["status"] = "reconnecting_browser"
+                    await self.broadcast_status()
+                    
+                    # Try to re-enter the game
+                    if not await self.enter_game():
+                        logging.error("Failed to reconnect to game, stopping bot")
+                        bot_state["status"] = "connection_lost"
+                        self.running = False
+                        break
+                
                 # Update fuel level and position
                 current_fuel = await self.detect_fuel_level()
                 current_position = await self.detect_position()
@@ -1412,21 +1425,27 @@ class TankpitBot:
                 
                 # Check if shields need activation (critical threshold)
                 if current_fuel <= bot_state["settings"]["shield_threshold"] and not bot_state["shields_active"]:
-                    await self.activate_shields()
-                    bot_state["shields_active"] = True
-                    bot_state["status"] = "shields_activated"
-                    await self.broadcast_status()
+                    if self.page:  # Only try if we have a page
+                        await self.activate_shields()
+                        bot_state["shields_active"] = True
+                        bot_state["status"] = "shields_activated"
+                        await self.broadcast_status()
                 
-                # Main bot sequence logic
-                if current_fuel <= bot_state["settings"]["refuel_threshold"]:
-                    # Low fuel - prioritize fuel collection
-                    await self.execute_fuel_priority_sequence()
-                elif current_fuel >= bot_state["settings"]["safe_threshold"]:
-                    # High fuel - stationary mode, collect equipment if available
-                    await self.execute_safe_mode_sequence()
+                # Main bot sequence logic - only if we have a page
+                if self.page:
+                    if current_fuel <= bot_state["settings"]["refuel_threshold"]:
+                        # Low fuel - prioritize fuel collection
+                        await self.execute_fuel_priority_sequence()
+                    elif current_fuel >= bot_state["settings"]["safe_threshold"]:
+                        # High fuel - stationary mode, collect equipment if available
+                        await self.execute_safe_mode_sequence()
+                    else:
+                        # Medium fuel - balanced approach
+                        await self.execute_balanced_sequence()
                 else:
-                    # Medium fuel - balanced approach
-                    await self.execute_balanced_sequence()
+                    # No page available, try to reconnect
+                    logging.warning("No page available for bot sequences")
+                    bot_state["status"] = "no_browser_session"
                 
                 # Wait before next cycle
                 await asyncio.sleep(2)
