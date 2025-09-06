@@ -214,7 +214,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Fix bot tracking issues - page validation and error handling"
+    - "Verify login functionality after Xvfb restart"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
