@@ -1166,67 +1166,132 @@ class TankpitBot:
             logging.error(f"Error collecting fuel canisters: {e}")
     
     async def collect_all_equipment(self):
-        """Collect all equipment on screen until inventory is full"""
+        """Collect all equipment on screen using improved visual detection"""
         try:
             equipment_collected = 0
-            max_attempts = 20  # Prevent infinite loops
+            max_attempts = 15
             
-            # Equipment selectors - these might need adjustment based on tankpit.com's actual interface
-            equipment_selectors = [
-                # Common equipment indicators
-                '.equipment', '.item', '.pickup',
-                '[class*="equipment"]', '[class*="item"]', '[class*="weapon"]',
-                '[class*="armor"]', '[class*="shield"]', '[class*="tool"]',
-                # Visual indicators that might represent equipment
-                'img[alt*="equipment"]', 'img[alt*="item"]', 'img[alt*="weapon"]',
-                # Clickable elements that might be equipment
-                'div[onclick*="pickup"]', 'div[onclick*="collect"]',
-                # Generic clickable elements in game area (be careful with this)
-                '.game-item', '.collectible'
-            ]
+            logging.info("Starting equipment collection with visual detection")
             
             for attempt in range(max_attempts):
-                equipment_found = False
+                # Detect equipment using visual analysis
+                equipment_items = await self.detect_equipment_visually()
                 
-                # Try each equipment selector
-                for selector in equipment_selectors:
+                if not equipment_items:
+                    logging.info("No equipment detected on screen")
+                    break
+                
+                # Click on detected equipment items
+                for equipment in equipment_items:
                     try:
-                        equipment_elements = await self.page.query_selector_all(selector)
+                        await self.page.mouse.click(equipment['x'], equipment['y'])
+                        await self.page.wait_for_timeout(1000)
+                        equipment_collected += 1
+                        logging.info(f"Collected equipment item #{equipment_collected} at ({equipment['x']}, {equipment['y']})")
                         
-                        for equipment in equipment_elements:
-                            if not await equipment.is_visible():
-                                continue
-                                
-                            # Try to click the equipment
-                            try:
-                                await equipment.click()
-                                await self.page.wait_for_timeout(1000)  # Wait for pickup
-                                equipment_collected += 1
-                                equipment_found = True
-                                logging.info(f"Collected equipment item #{equipment_collected} using selector: {selector}")
-                                
-                                # Check if inventory might be full (this is game-specific)
-                                # For now, we'll rely on max_attempts to prevent infinite loops
-                                
-                            except Exception as e:
-                                # Equipment might not be clickable or already collected
-                                continue
-                                
-                        if equipment_found:
-                            break  # Found equipment with this selector, continue outer loop
+                        # Break if we've collected enough
+                        if equipment_collected >= 10:  # Reasonable limit
+                            break
                             
                     except Exception as e:
-                        continue  # Try next selector
+                        logging.warning(f"Failed to collect equipment: {e}")
+                        continue
                 
-                # If no equipment found with any selector, we're probably done
-                if not equipment_found:
-                    logging.info("No more equipment found on screen")
+                # Break if we found and processed equipment
+                if equipment_items:
                     break
                     
             logging.info(f"Equipment collection complete. Collected {equipment_collected} items")
             
         except Exception as e:
             logging.error(f"Error collecting equipment: {e}")
+    
+    async def detect_equipment_visually(self):
+        """Detect equipment items using visual analysis based on equipment image characteristics"""
+        try:
+            # Take screenshot for analysis
+            screenshot = await self.page.screenshot()
+            nparr = np.frombuffer(screenshot, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                return []
+            
+            equipment_items = []
+            
+            # Convert to HSV for better color analysis
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            
+            # Equipment typically has distinct colors - look for metallic/brown/orange tones
+            # Based on the equipment image, look for brown/orange equipment colors
+            equipment_color_ranges = [
+                # Brown/orange equipment tones
+                (np.array([10, 50, 50]), np.array([25, 255, 255])),  # Orange-brown
+                (np.array([0, 50, 50]), np.array([10, 255, 255])),   # Red-brown
+                # Gray/metallic equipment
+                (np.array([0, 0, 100]), np.array([180, 30, 200])),   # Gray metallic
+            ]
+            
+            combined_mask = None
+            
+            for lower, upper in equipment_color_ranges:
+                mask = cv2.inRange(hsv, lower, upper)
+                if combined_mask is None:
+                    combined_mask = mask
+                else:
+                    combined_mask = cv2.bitwise_or(combined_mask, mask)
+            
+            if combined_mask is None:
+                return []
+            
+            # Apply morphological operations to clean up the mask
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel)
+            combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel)
+            
+            # Find contours for potential equipment
+            contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            height, width = img.shape[:2]
+            
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                
+                # Filter by reasonable equipment size (not too small, not too large)
+                if 100 < area < 5000:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    
+                    # Additional filtering: reasonable aspect ratio for equipment
+                    aspect_ratio = w / h if h > 0 else 0
+                    if 0.3 < aspect_ratio < 3.0:  # Not too elongated
+                        
+                        # Check if it's not at the very edges (likely UI elements)
+                        margin = 50
+                        if (margin < x < width - margin - w and 
+                            margin < y < height - margin - h):
+                            
+                            equipment_items.append({
+                                'x': x + w//2,
+                                'y': y + h//2,
+                                'width': w,
+                                'height': h,
+                                'area': area,
+                                'aspect_ratio': aspect_ratio
+                            })
+            
+            # Sort by area (larger equipment items first, likely more valuable)
+            equipment_items.sort(key=lambda x: x['area'], reverse=True)
+            
+            # Limit to avoid clicking too many false positives
+            equipment_items = equipment_items[:8]
+            
+            logging.info(f"Detected {len(equipment_items)} potential equipment items")
+            
+            return equipment_items
+            
+        except Exception as e:
+            logging.error(f"Error in visual equipment detection: {e}")
+            return []
     
     async def activate_bot_and_mine(self):
         """Activate bot and mine features on new screen - DEPRECATED, replaced by perform_screen_entry_sequence"""
