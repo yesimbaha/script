@@ -1769,12 +1769,34 @@ class TankpitBot:
             await self.page.keyboard.press("s")
             await self.page.wait_for_timeout(1500)
             
+            # Check if "nothing detected here" message appears
+            if await self.detect_nothing_found_message():
+                logging.info("Nothing detected - performing random proximity search")
+                attempts = 0
+                max_attempts = 5  # Try 5 different locations
+                
+                while attempts < max_attempts:
+                    await self.perform_random_proximity_move()
+                    
+                    # Check again after moving
+                    if not await self.detect_nothing_found_message():
+                        logging.info("Found something after proximity search")
+                        break
+                    
+                    attempts += 1
+                    logging.info(f"Still nothing found, attempt {attempts}/{max_attempts}")
+                
+                if attempts >= max_attempts:
+                    logging.info("No items found after proximity search - using overview map")
+                    await self.use_overview_map_for_fuel()
+                    return
+            
             # Look for fuel nodes on current screen
             fuel_nodes = await self.detect_fuel_nodes()
             
             if fuel_nodes:
                 # Collect fuel from highest value nodes first
-                await self.collect_prioritized_fuel(fuel_nodes)
+                await self.collect_fuel_from_nodes(fuel_nodes)
             else:
                 # No fuel on screen - use map to find fuel
                 logging.info("No fuel detected on screen, opening overview map")
@@ -1782,6 +1804,30 @@ class TankpitBot:
                 
         except Exception as e:
             logging.error(f"Error in fuel priority sequence: {e}")
+    
+    async def collect_fuel_from_nodes(self, fuel_nodes):
+        """Collect fuel from detected nodes"""
+        try:
+            collected = 0
+            for fuel_node in fuel_nodes:
+                current_fuel = await self.detect_fuel_level()
+                
+                # Stop if we've reached safety threshold
+                if current_fuel >= bot_state["settings"]["safe_threshold"]:
+                    logging.info(f"Reached safety threshold ({current_fuel}%), stopping fuel collection")
+                    break
+                
+                # Click on the fuel node
+                await self.page.mouse.click(fuel_node['x'], fuel_node['y'])
+                await self.page.wait_for_timeout(1500)
+                
+                collected += 1
+                logging.info(f"Collected fuel node {collected} (estimated value: {fuel_node['estimated_value']})")
+            
+            logging.info(f"Collected fuel from {collected} nodes")
+            
+        except Exception as e:
+            logging.error(f"Error collecting fuel from nodes: {e}")
     
     async def execute_safe_mode_sequence(self):
         """Execute sequence when fuel is above safe threshold"""
