@@ -1185,8 +1185,8 @@ class TankpitBot:
                     # This simulates staying alert for new spawns
                     await self.collect_all_equipment()
                 
-                # Wait before next cycle - reduced for more responsive equipment collection
-                await asyncio.sleep(3)
+                # Wait before next cycle - reduced for more responsive fuel detection
+                await asyncio.sleep(1)  # Much faster for real-time damage detection
                 
             except Exception as e:
                 logging.error(f"Bot cycle error: {e}")
