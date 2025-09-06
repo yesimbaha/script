@@ -3183,6 +3183,15 @@ class TankPitBotAPITester:
         self.test_enhanced_bot_sequences()
         self.test_enhanced_fuel_detection_methods()
         
+        # Test PERSISTENT SEARCH SYSTEM (NEW)
+        print("\n🔍 TESTING PERSISTENT SEARCH SYSTEM...")
+        self.test_persistent_search_functions_existence()
+        self.test_12_pixel_proximity_movement()
+        self.test_screen_edge_exploration()
+        self.test_persistent_search_logic()
+        self.test_enhanced_sequence_integration()
+        self.test_persistent_search_error_handling()
+        
         # Test OpenCV Integration
         print("\n🖼️  TESTING OPENCV INTEGRATION...")
         self.test_opencv_integration()
