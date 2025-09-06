@@ -2395,18 +2395,21 @@ class TankpitBot:
             logging.info("Executing post-landing sequence")
             bot_state["status"] = "post_landing_sequence"
             
-            # Press S for radar
+            # Step 1: Configure equipment settings
+            await self.configure_equipment_settings()
+            
+            # Step 2: Press S for radar
             await self.page.keyboard.press("s")
             await self.page.wait_for_timeout(2000)
             
-            # Press D for mines
+            # Step 3: Press D for mines
             await self.page.keyboard.press("d")
             await self.page.wait_for_timeout(1500)
             
-            # Collect fuel until threshold
+            # Step 4: Collect fuel until threshold
             await self.collect_fuel_until_safe()
             
-            # Collect equipment
+            # Step 5: Collect equipment
             await self.collect_all_equipment()
             
             logging.info("Post-landing sequence completed")
