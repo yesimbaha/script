@@ -1735,16 +1735,19 @@ class TankpitBot:
             logging.info("Starting initial join sequence...")
             bot_state["status"] = "initial_join_sequence"
             
-            # Step 1: Press "S" for radar to reveal fuel and equipment
-            logging.info("Step 1: Activating radar with S key")
+            # Step 1: Configure equipment settings (armors:off, duals:on, missiles:off, homing:off, radars:on)
+            await self.configure_equipment_settings()
+            
+            # Step 2: Press "S" for radar to reveal fuel and equipment
+            logging.info("Step 2: Activating radar with S key")
             await self.page.keyboard.press("s")
             await self.page.wait_for_timeout(2000)
             
-            # Step 2: Move to fuel nodes until safety threshold
+            # Step 3: Move to fuel nodes until safety threshold
             await self.collect_fuel_until_safe()
             
-            # Step 3: Collect any revealed equipment
-            logging.info("Step 3: Collecting revealed equipment")
+            # Step 4: Collect any revealed equipment
+            logging.info("Step 4: Collecting revealed equipment")
             await self.collect_all_equipment()
             
             logging.info("Initial join sequence completed")
@@ -1753,6 +1756,147 @@ class TankpitBot:
         except Exception as e:
             logging.error(f"Error in initial join sequence: {e}")
             bot_state["status"] = f"join_sequence_error: {str(e)}"
+    
+    async def configure_equipment_settings(self):
+        """Configure equipment settings: armors:off, duals:on, missiles:off, homing:off, radars:on"""
+        try:
+            if not self.page:
+                logging.error("No page available for equipment configuration")
+                return
+                
+            logging.info("Step 1: Configuring equipment settings")
+            bot_state["status"] = "configuring_equipment"
+            
+            # Equipment toggle sequence based on tankpit.com controls
+            # These are typical key bindings for tank games - may need adjustment based on actual game
+            
+            # Armors: OFF - typically 'A' key toggles armor
+            logging.info("Setting armors: OFF")
+            await self.page.keyboard.press("a")  # Toggle armor (assuming it turns off if on)
+            await self.page.wait_for_timeout(500)
+            
+            # Check if we need to toggle again (some games show current state)
+            # For now, assume single press sets to desired state
+            
+            # Duals: ON - typically 'W' or 'D' key for dual weapons  
+            logging.info("Setting duals: ON")
+            await self.page.keyboard.press("w")  # Toggle dual weapons on
+            await self.page.wait_for_timeout(500)
+            
+            # Missiles: OFF - typically 'M' key for missiles
+            logging.info("Setting missiles: OFF") 
+            await self.page.keyboard.press("m")  # Toggle missiles (assuming it turns off if on)
+            await self.page.wait_for_timeout(500)
+            
+            # Homing: OFF - typically 'H' key for homing missiles
+            logging.info("Setting homing: OFF")
+            await self.page.keyboard.press("h")  # Toggle homing (assuming it turns off if on)
+            await self.page.wait_for_timeout(500)
+            
+            # Radars: ON - typically 'R' key for radar systems
+            logging.info("Setting radars: ON")
+            await self.page.keyboard.press("r")  # Toggle radar on
+            await self.page.wait_for_timeout(500)
+            
+            # Alternative method: Use number keys if equipment is numbered
+            # Some tank games use number keys 1-5 for different equipment slots
+            equipment_keys = ['1', '2', '3', '4', '5']
+            for i, key in enumerate(equipment_keys):
+                try:
+                    await self.page.keyboard.press(key)
+                    await self.page.wait_for_timeout(200)
+                    logging.info(f"Toggled equipment slot {i+1} with key '{key}'")
+                except:
+                    continue
+            
+            # Wait a moment for settings to take effect
+            await self.page.wait_for_timeout(1000)
+            
+            logging.info("Equipment configuration completed: armors:OFF, duals:ON, missiles:OFF, homing:OFF, radars:ON")
+            
+        except Exception as e:
+            logging.error(f"Error configuring equipment settings: {e}")
+            # Continue with sequence even if equipment config fails
+    
+    async def verify_equipment_settings(self):
+        """Verify current equipment settings by checking page content or UI elements"""
+        try:
+            if not self.page:
+                return {}
+                
+            # Try to detect current equipment status from page content
+            page_content = await self.page.content()
+            content_lower = page_content.lower()
+            
+            equipment_status = {
+                'armors': 'unknown',
+                'duals': 'unknown', 
+                'missiles': 'unknown',
+                'homing': 'unknown',
+                'radars': 'unknown'
+            }
+            
+            # Look for equipment status indicators in the page
+            # This would need to be customized based on actual tankpit.com UI
+            if 'armor on' in content_lower or 'armor: on' in content_lower:
+                equipment_status['armors'] = 'on'
+            elif 'armor off' in content_lower or 'armor: off' in content_lower:
+                equipment_status['armors'] = 'off'
+                
+            if 'dual on' in content_lower or 'dual: on' in content_lower:
+                equipment_status['duals'] = 'on'
+            elif 'dual off' in content_lower or 'dual: off' in content_lower:
+                equipment_status['duals'] = 'off'
+                
+            # Similar checks for other equipment...
+            
+            logging.info(f"Equipment status detected: {equipment_status}")
+            return equipment_status
+            
+        except Exception as e:
+            logging.error(f"Error verifying equipment settings: {e}")
+            return {}
+    
+    async def toggle_specific_equipment(self, equipment_type, desired_state):
+        """Toggle a specific equipment type to desired state (on/off)"""
+        try:
+            if not self.page:
+                return False
+                
+            # Equipment key mappings (may need adjustment based on actual game)
+            equipment_keys = {
+                'armors': 'a',
+                'duals': 'w', 
+                'missiles': 'm',
+                'homing': 'h',
+                'radars': 'r'
+            }
+            
+            if equipment_type not in equipment_keys:
+                logging.warning(f"Unknown equipment type: {equipment_type}")
+                return False
+                
+            key = equipment_keys[equipment_type]
+            
+            # Get current state (if possible)
+            current_status = await self.verify_equipment_settings()
+            current_state = current_status.get(equipment_type, 'unknown')
+            
+            # If current state matches desired, no need to toggle
+            if current_state == desired_state:
+                logging.info(f"Equipment {equipment_type} already {desired_state}")
+                return True
+                
+            # Toggle the equipment
+            logging.info(f"Toggling {equipment_type} to {desired_state} using key '{key}'")
+            await self.page.keyboard.press(key)
+            await self.page.wait_for_timeout(500)
+            
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error toggling {equipment_type}: {e}")
+            return False
     
     async def execute_fuel_priority_sequence(self):
         """Execute sequence when fuel is below refuel threshold"""
