@@ -292,6 +292,7 @@ class TankPitBotAPITester:
         print("\n⛽ TESTING NEW FUEL DETECTION SYSTEM...")
         self.test_fuel_detection_endpoint()
         self.test_screenshot_endpoint()
+        self.test_fuel_detection_integration()
         
         # Test bot control endpoints
         print("\n🤖 TESTING BOT CONTROL ENDPOINTS...")
