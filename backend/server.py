@@ -1229,26 +1229,63 @@ class TankpitBot:
             logging.error(f"Error checking screen maintenance needs: {e}")
             return False
     
-    async def navigate_to_new_area(self):
-        """Navigate to a new area when current area has no more resources"""
+    async def detect_position(self):
+        """Detect current tank position on the map"""
         try:
-            bot_state["status"] = "navigating_to_new_area"
+            # This is game-specific and would need to be customized based on tankpit.com's interface
+            # For now, we'll try to extract position from common sources
             
-            # Use the map to find a new area with resources
-            await self.open_map()
-            await self.page.wait_for_timeout(2000)
+            # Method 1: Look for position indicators in the UI
+            position_selectors = [
+                '*:has-text("X:")', '*:has-text("Y:")',
+                '*[class*="position"]', '*[id*="position"]',
+                '*[class*="coord"]', '*[id*="coord"]'
+            ]
             
-            # Find and click on a fuel-dense area
-            if await self.find_dense_fuel_area():
-                logging.info("Successfully navigated to new area")
-                return True
-            else:
-                logging.warning("Could not find new area with resources")
-                return False
-                
+            for selector in position_selectors:
+                try:
+                    elements = await self.page.query_selector_all(selector)
+                    for element in elements:
+                        text = await element.inner_text()
+                        
+                        # Look for coordinate patterns
+                        import re
+                        coord_matches = re.findall(r'[XY][:=\s]*(\d+)', text)
+                        if coord_matches and len(coord_matches) >= 2:
+                            x, y = int(coord_matches[0]), int(coord_matches[1])
+                            logging.info(f"Found position ({x}, {y}) from UI element")
+                            return {"x": x, "y": y}
+                            
+                except:
+                    continue
+            
+            # Method 2: Try JavaScript to get position
+            js_position_checks = [
+                "window.player && window.player.x && window.player.y && {x: window.player.x, y: window.player.y}",
+                "window.tank && window.tank.x && window.tank.y && {x: window.tank.x, y: window.tank.y}",
+                "window.game && window.game.player && {x: window.game.player.x, y: window.game.player.y}"
+            ]
+            
+            for js_check in js_position_checks:
+                try:
+                    result = await self.page.evaluate(js_check)
+                    if result and isinstance(result, dict) and 'x' in result and 'y' in result:
+                        logging.info(f"Found position ({result['x']}, {result['y']}) via JavaScript")
+                        return {"x": int(result['x']), "y": int(result['y'])}
+                except:
+                    continue
+            
+            # Method 3: Generate mock position based on movement (placeholder)
+            # In a real implementation, you'd track movements and calculate position
+            current_time = time.time()
+            x = int((current_time % 1000))  # Mock X coordinate
+            y = int((current_time % 800))   # Mock Y coordinate
+            
+            return {"x": x, "y": y}
+            
         except Exception as e:
-            logging.error(f"Error navigating to new area: {e}")
-            return False
+            logging.error(f"Error detecting position: {e}")
+            return {"x": 0, "y": 0}
     
     async def broadcast_status(self):
         """Broadcast current status to all WebSocket connections"""
