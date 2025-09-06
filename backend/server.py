@@ -288,6 +288,10 @@ class TankpitBot:
                     f"Logged in: {username}" in page_content):
                     logging.info("Login appears successful based on page content")
                     logging.info(f"Success detected - URL: {current_url}, returning True")
+                    
+                    # CRITICAL FIX: Dismiss any remaining login overlays after successful login
+                    await self.dismiss_login_overlay()
+                    
                     return True
                 
                 # Check for error messages in the login form
