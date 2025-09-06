@@ -1319,7 +1319,7 @@ class TankpitBot:
             return False
     
     async def run_bot_cycle(self):
-        """Main bot logic cycle with comprehensive equipment maintenance"""
+        """Main bot logic cycle with improved fuel and equipment sequence"""
         # First, make sure we're in the game
         if not await self.enter_game():
             logging.error("Failed to enter game, stopping bot")
@@ -1330,12 +1330,12 @@ class TankpitBot:
         bot_state["status"] = "entered_game"
         logging.info("Bot successfully entered the game")
         
-        # Perform initial screen entry sequence
-        await self.perform_screen_entry_sequence()
+        # Perform initial optimized sequence when joining
+        await self.perform_initial_join_sequence()
         
         while self.running:
             try:
-                # Update fuel level AND position
+                # Update fuel level and position
                 current_fuel = await self.detect_fuel_level()
                 current_position = await self.detect_position()
                 
@@ -1345,46 +1345,26 @@ class TankpitBot:
                 # Broadcast status update EVERY cycle for real-time UI updates
                 await self.broadcast_status()
                 
-                # Check if shields need activation (10% threshold)
+                # Check if shields need activation (critical threshold)
                 if current_fuel <= bot_state["settings"]["shield_threshold"] and not bot_state["shields_active"]:
                     await self.activate_shields()
                     bot_state["shields_active"] = True
                     bot_state["status"] = "shields_activated"
-                    await self.broadcast_status()  # Immediate update
+                    await self.broadcast_status()
                 
-                # Check if we need to perform screen maintenance
-                # This is the core equipment maintenance logic
-                if current_fuel <= bot_state["settings"]["refuel_threshold"] or await self.should_perform_screen_maintenance():
-                    logging.info("Performing screen maintenance cycle")
-                    bot_state["status"] = "screen_maintenance"
-                    await self.broadcast_status()  # Immediate update
-                    
-                    # Perform complete screen entry sequence
-                    await self.perform_screen_entry_sequence()
-                    await self.broadcast_status()  # After maintenance update
-                    
-                    # After maintenance, check if we need to move to new screen for more resources
-                    current_fuel = await self.detect_fuel_level()
-                    if current_fuel <= bot_state["settings"]["refuel_threshold"]:
-                        # No fuel available on current screen, need to move
-                        bot_state["status"] = "searching_new_area"
-                        await self.broadcast_status()  # Immediate update
-                        # Note: navigate_to_new_area was replaced with detect_position
-                        # For now, just perform another screen entry sequence
-                        await self.perform_screen_entry_sequence()
-                
-                # If fuel is above safe threshold (85%), maintain position but stay alert
+                # Main bot sequence logic
+                if current_fuel <= bot_state["settings"]["refuel_threshold"]:
+                    # Low fuel - prioritize fuel collection
+                    await self.execute_fuel_priority_sequence()
                 elif current_fuel >= bot_state["settings"]["safe_threshold"]:
-                    bot_state["status"] = "stationary_maintaining"
-                    bot_state["shields_active"] = False
-                    await self.broadcast_status()  # Immediate update
-                    
-                    # Even when stationary, occasionally check for new equipment
-                    # This simulates staying alert for new spawns
-                    await self.collect_all_equipment()
+                    # High fuel - stationary mode, collect equipment if available
+                    await self.execute_safe_mode_sequence()
+                else:
+                    # Medium fuel - balanced approach
+                    await self.execute_balanced_sequence()
                 
-                # Wait before next cycle - reduced for more responsive fuel detection
-                await asyncio.sleep(1)  # Much faster for real-time damage detection
+                # Wait before next cycle
+                await asyncio.sleep(2)
                 
             except Exception as e:
                 logging.error(f"Bot cycle error: {e}")
