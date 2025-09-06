@@ -641,6 +641,279 @@ class TankPitBotAPITester:
                 f"Error testing fuel detection methods: {str(e)}"
             )
 
+    def test_simplified_fuel_detection_system(self):
+        """Test the NEW simplified fuel detection system - black vs colored pixels"""
+        print(f"\n🔥 Testing SIMPLIFIED Fuel Detection System...")
+        
+        try:
+            import sys
+            import asyncio
+            import cv2
+            import numpy as np
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test 1: Check if measure_fuel_gauge_simple method exists
+            if not hasattr(bot, 'measure_fuel_gauge_simple'):
+                return self.log_result(
+                    "Simplified Fuel Detection - measure_fuel_gauge_simple method",
+                    False,
+                    "measure_fuel_gauge_simple method not found"
+                )
+            else:
+                self.log_result(
+                    "Simplified Fuel Detection - measure_fuel_gauge_simple method",
+                    True,
+                    "measure_fuel_gauge_simple method exists"
+                )
+            
+            # Test 2: Test the simplified fuel gauge measurement with mock data
+            print("   Creating test fuel gauge image...")
+            
+            # Create a test fuel gauge image (100x20 pixels)
+            # Left half = colored (fuel), right half = black (empty)
+            test_gauge = np.zeros((20, 100, 3), dtype=np.uint8)
+            
+            # Left 75% = colored fuel (blue color)
+            test_gauge[:, :75] = [100, 150, 200]  # Colored fuel area
+            # Right 25% = black empty area
+            test_gauge[:, 75:] = [0, 0, 0]  # Black empty area
+            
+            # Test the simplified measurement function
+            try:
+                fuel_percentage = asyncio.run(bot.measure_fuel_gauge_simple(test_gauge))
+                
+                if fuel_percentage is not None:
+                    # Should return approximately 75% (75 colored pixels out of 100)
+                    if 70 <= fuel_percentage <= 80:  # Allow some tolerance
+                        self.log_result(
+                            "Simplified Fuel Detection - Pixel Analysis Logic",
+                            True,
+                            f"Correctly calculated {fuel_percentage}% fuel from test image (expected ~75%)"
+                        )
+                    else:
+                        self.log_result(
+                            "Simplified Fuel Detection - Pixel Analysis Logic",
+                            False,
+                            f"Incorrect calculation: got {fuel_percentage}%, expected ~75%"
+                        )
+                else:
+                    self.log_result(
+                        "Simplified Fuel Detection - Pixel Analysis Logic",
+                        False,
+                        "measure_fuel_gauge_simple returned None"
+                    )
+                    
+            except Exception as e:
+                self.log_result(
+                    "Simplified Fuel Detection - Pixel Analysis Logic",
+                    False,
+                    f"Error in measure_fuel_gauge_simple: {str(e)}"
+                )
+            
+            # Test 3: Test detect_fuel_level without page (should return default)
+            try:
+                fuel_level = asyncio.run(bot.detect_fuel_level())
+                
+                if isinstance(fuel_level, (int, float)) and 0 <= fuel_level <= 100:
+                    self.log_result(
+                        "Simplified Fuel Detection - detect_fuel_level without page",
+                        True,
+                        f"Returns valid default fuel level: {fuel_level}%"
+                    )
+                else:
+                    self.log_result(
+                        "Simplified Fuel Detection - detect_fuel_level without page",
+                        False,
+                        f"Invalid fuel level returned: {fuel_level}"
+                    )
+                    
+            except Exception as e:
+                self.log_result(
+                    "Simplified Fuel Detection - detect_fuel_level without page",
+                    False,
+                    f"Error in detect_fuel_level: {str(e)}"
+                )
+            
+            # Test 4: Test different fuel gauge scenarios
+            print("   Testing various fuel gauge scenarios...")
+            
+            test_scenarios = [
+                ("Full Fuel", np.full((20, 100, 3), [100, 150, 200], dtype=np.uint8), 95, 100),
+                ("Empty Fuel", np.full((20, 100, 3), [10, 10, 10], dtype=np.uint8), 0, 10),
+                ("Half Fuel", None, 45, 55)  # Will create 50/50 split
+            ]
+            
+            for scenario_name, test_image, min_expected, max_expected in test_scenarios:
+                if test_image is None:  # Create 50/50 split for half fuel
+                    test_image = np.zeros((20, 100, 3), dtype=np.uint8)
+                    test_image[:, :50] = [100, 150, 200]  # Left half colored
+                    test_image[:, 50:] = [5, 5, 5]  # Right half black
+                
+                try:
+                    result = asyncio.run(bot.measure_fuel_gauge_simple(test_image))
+                    if result is not None and min_expected <= result <= max_expected:
+                        self.log_result(
+                            f"Simplified Fuel Detection - {scenario_name} Scenario",
+                            True,
+                            f"Correctly detected {result}% fuel (expected {min_expected}-{max_expected}%)"
+                        )
+                    else:
+                        self.log_result(
+                            f"Simplified Fuel Detection - {scenario_name} Scenario",
+                            False,
+                            f"Incorrect detection: {result}% (expected {min_expected}-{max_expected}%)"
+                        )
+                except Exception as e:
+                    self.log_result(
+                        f"Simplified Fuel Detection - {scenario_name} Scenario",
+                        False,
+                        f"Error testing scenario: {str(e)}"
+                    )
+            
+            return True
+                
+        except Exception as e:
+            return self.log_result(
+                "Simplified Fuel Detection System",
+                False,
+                f"Error testing simplified fuel detection: {str(e)}"
+            )
+
+    def test_fuel_detection_api_integration(self):
+        """Test fuel detection through API endpoints"""
+        print(f"\n🔌 Testing Fuel Detection API Integration...")
+        
+        # Test bot status endpoint to check fuel reporting
+        try:
+            url = f"{self.api_url}/bot/status"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                status_data = response.json()
+                
+                # Check if current_fuel field exists and is valid
+                if 'current_fuel' in status_data:
+                    fuel_value = status_data['current_fuel']
+                    if isinstance(fuel_value, (int, float)) and 0 <= fuel_value <= 100:
+                        self.log_result(
+                            "Fuel Detection API - Bot Status Fuel Field",
+                            True,
+                            f"Bot status reports fuel level: {fuel_value}%"
+                        )
+                    else:
+                        self.log_result(
+                            "Fuel Detection API - Bot Status Fuel Field",
+                            False,
+                            f"Invalid fuel value in bot status: {fuel_value}"
+                        )
+                else:
+                    self.log_result(
+                        "Fuel Detection API - Bot Status Fuel Field",
+                        False,
+                        "current_fuel field missing from bot status"
+                    )
+                
+                return True
+            else:
+                return self.log_result(
+                    "Fuel Detection API Integration",
+                    False,
+                    f"Bot status API returned {response.status_code}"
+                )
+                
+        except Exception as e:
+            return self.log_result(
+                "Fuel Detection API Integration",
+                False,
+                f"Error testing fuel detection API: {str(e)}"
+            )
+
+    def test_opencv_fuel_detection_operations(self):
+        """Test OpenCV operations specific to fuel detection"""
+        print(f"\n🖼️  Testing OpenCV Fuel Detection Operations...")
+        
+        try:
+            import cv2
+            import numpy as np
+            
+            # Test 1: Color range operations for black vs colored detection
+            test_img = np.zeros((50, 100, 3), dtype=np.uint8)
+            test_img[:, :50] = [100, 150, 200]  # Colored area
+            test_img[:, 50:] = [10, 10, 10]    # Dark area
+            
+            # Test black pixel detection (as used in measure_fuel_gauge_simple)
+            black_lower = np.array([0, 0, 0])
+            black_upper = np.array([50, 50, 50])
+            black_mask = cv2.inRange(test_img, black_lower, black_upper)
+            black_pixels = cv2.countNonZero(black_mask)
+            
+            # Test colored pixel detection
+            colored_lower = np.array([51, 51, 51])
+            colored_upper = np.array([255, 255, 255])
+            colored_mask = cv2.inRange(test_img, colored_lower, colored_upper)
+            colored_pixels = cv2.countNonZero(colored_mask)
+            
+            total_pixels = black_pixels + colored_pixels
+            
+            if total_pixels > 0:
+                fuel_percentage = int((colored_pixels / total_pixels) * 100)
+                
+                # Should be approximately 50% (half colored, half black)
+                if 45 <= fuel_percentage <= 55:
+                    self.log_result(
+                        "OpenCV Fuel Detection - Color Range Operations",
+                        True,
+                        f"Correctly calculated {fuel_percentage}% from color ranges (black: {black_pixels}, colored: {colored_pixels})"
+                    )
+                else:
+                    self.log_result(
+                        "OpenCV Fuel Detection - Color Range Operations",
+                        False,
+                        f"Incorrect calculation: {fuel_percentage}% (black: {black_pixels}, colored: {colored_pixels})"
+                    )
+            else:
+                self.log_result(
+                    "OpenCV Fuel Detection - Color Range Operations",
+                    False,
+                    "No pixels detected in color ranges"
+                )
+            
+            # Test 2: Image region extraction (bottom 15% of screen)
+            full_img = np.random.randint(0, 255, (1000, 800, 3), dtype=np.uint8)
+            height, width = full_img.shape[:2]
+            
+            # Extract bottom 15% (as done in detect_fuel_level)
+            bottom_ui_start = int(height * 0.85)
+            fuel_gauge_area = full_img[bottom_ui_start:height, :]
+            
+            expected_height = height - bottom_ui_start
+            actual_height = fuel_gauge_area.shape[0]
+            
+            if actual_height == expected_height and fuel_gauge_area.shape[1] == width:
+                self.log_result(
+                    "OpenCV Fuel Detection - Region Extraction",
+                    True,
+                    f"Correctly extracted bottom region: {actual_height}x{width} from {height}x{width} image"
+                )
+            else:
+                self.log_result(
+                    "OpenCV Fuel Detection - Region Extraction",
+                    False,
+                    f"Incorrect region extraction: got {fuel_gauge_area.shape}, expected {expected_height}x{width}"
+                )
+            
+            return True
+            
+        except Exception as e:
+            return self.log_result(
+                "OpenCV Fuel Detection Operations",
+                False,
+                f"Error testing OpenCV operations: {str(e)}"
+            )
+
     def test_bot_tracking_bug_fixes(self):
         """Test the specific bug fixes for bot tracking issues"""
         print(f"\n🐛 Testing Bot Tracking Bug Fixes...")
