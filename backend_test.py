@@ -1515,8 +1515,21 @@ def main():
     """Main test function"""
     import sys
     
+    # Check if we should run simplified fuel detection tests
+    if len(sys.argv) > 1 and sys.argv[1] == "--fuel-detection-focus":
+        print("🔥 Running SIMPLIFIED FUEL DETECTION tests as requested in review...")
+        tester = TankPitBotAPITester()
+        try:
+            success = tester.run_simplified_fuel_detection_tests()
+            return 0 if success else 1
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Tests interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n\n💥 Unexpected error: {str(e)}")
+            return 1
     # Check if we should run focused bug fix tests
-    if len(sys.argv) > 1 and sys.argv[1] == "--bug-fix-focus":
+    elif len(sys.argv) > 1 and sys.argv[1] == "--bug-fix-focus":
         print("🐛 Running BOT TRACKING BUG FIX tests as requested in review...")
         tester = TankPitBotAPITester()
         try:
