@@ -1190,8 +1190,21 @@ def main():
     """Main test function"""
     import sys
     
+    # Check if we should run focused bug fix tests
+    if len(sys.argv) > 1 and sys.argv[1] == "--bug-fix-focus":
+        print("🐛 Running BOT TRACKING BUG FIX tests as requested in review...")
+        tester = TankPitBotAPITester()
+        try:
+            success = tester.run_bot_tracking_bug_fix_tests()
+            return 0 if success else 1
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Tests interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n\n💥 Unexpected error: {str(e)}")
+            return 1
     # Check if we should run focused login tests
-    if len(sys.argv) > 1 and sys.argv[1] == "--login-focus":
+    elif len(sys.argv) > 1 and sys.argv[1] == "--login-focus":
         print("🎯 Running LOGIN-FOCUSED tests as requested in review...")
         tester = TankPitBotAPITester()
         try:
