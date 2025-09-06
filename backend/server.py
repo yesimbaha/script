@@ -1796,15 +1796,15 @@ class TankpitBot:
             bot_position = await self.find_bot_on_overview_map(img)
             
             if bot_position:
-                # Click within 30 pixel radius of bot's position
+                # Click within 15 pixel radius of bot's position (reduced from 30)
                 import random
-                offset_x = random.randint(-30, 30)
-                offset_y = random.randint(-30, 30)
+                offset_x = random.randint(-15, 15)
+                offset_y = random.randint(-15, 15)
                 
                 target_x = bot_position['x'] + offset_x
                 target_y = bot_position['y'] + offset_y
                 
-                logging.info(f"Clicking near bot position: ({target_x}, {target_y})")
+                logging.info(f"Clicking near bot position: ({target_x}, {target_y}) within 15px radius")
                 await self.page.mouse.click(target_x, target_y)
                 await self.page.wait_for_timeout(4000)
                 
