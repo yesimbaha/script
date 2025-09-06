@@ -2198,31 +2198,31 @@ class TankpitBot:
             logging.error(f"Error collecting fuel from nodes: {e}")
     
     async def execute_safe_mode_sequence(self):
-        """Execute sequence when fuel is above safe threshold"""
+        """FAST safe mode sequence when fuel is above safe threshold"""
         try:
             if not self.page:
                 logging.error("No page available for safe mode sequence")
                 bot_state["status"] = "no_browser_session"
                 return
                 
-            bot_state["status"] = "safe_mode_stationary"
-            logging.info("Executing safe mode sequence - staying stationary")
+            bot_state["status"] = "fast_safe_mode"
+            logging.info("FAST safe mode - quick equipment check")
             
-            # Deactivate shields if active
+            # Deactivate shields
             bot_state["shields_active"] = False
             
-            # Press S occasionally to check for new equipment
+            # Quick radar for equipment
             await self.page.keyboard.press("s")
-            await self.page.wait_for_timeout(1500)
+            await self.page.wait_for_timeout(400)  # Reduced from 1500ms to 400ms
             
-            # Collect any available equipment
-            await self.collect_all_equipment()
+            # Fast equipment collection only
+            await self.fast_collect_equipment()
             
-            # Stay stationary and wait
-            await asyncio.sleep(3)
+            # Short wait (reduced from 3000ms to 1000ms)
+            await asyncio.sleep(1)
             
         except Exception as e:
-            logging.error(f"Error in safe mode sequence: {e}")
+            logging.error(f"Error in fast safe mode sequence: {e}")
     
     async def execute_balanced_sequence(self):
         """FAST balanced sequence when fuel is in medium range"""
