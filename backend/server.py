@@ -1533,52 +1533,101 @@ class TankpitBot:
             logging.error(f"Error in balanced sequence: {e}")
     
     async def detect_fuel_nodes(self):
-        """Detect fuel nodes on screen and return sorted by value"""
+        """Detect fuel nodes on screen using improved visual analysis based on fuel image"""
         try:
             # Take screenshot for analysis
             screenshot = await self.page.screenshot()
-            
-            # Use OpenCV to detect fuel node patterns
             nparr = np.frombuffer(screenshot, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
+            if img is None:
+                return []
+            
             fuel_nodes = []
             
-            # Look for fuel node characteristics (yellow/golden colors typical of fuel)
+            # Convert to HSV for better color detection
             hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
             
-            # Define fuel node color ranges (yellow/golden)
-            fuel_color_lower = np.array([20, 100, 100])  # Yellow lower bound
-            fuel_color_upper = np.array([30, 255, 255])  # Yellow upper bound
+            # Based on fuel.png, fuel nodes appear to be bright yellow/golden
+            # Define multiple fuel color ranges to catch variations
+            fuel_color_ranges = [
+                # Bright yellow fuel
+                (np.array([20, 150, 150]), np.array([30, 255, 255])),
+                # Golden fuel 
+                (np.array([15, 100, 150]), np.array([35, 255, 255])),
+                # Light yellow fuel
+                (np.array([25, 80, 180]), np.array([35, 255, 255])),
+            ]
             
-            fuel_mask = cv2.inRange(hsv, fuel_color_lower, fuel_color_upper)
+            combined_fuel_mask = None
             
-            # Find contours that could be fuel nodes
-            contours, _ = cv2.findContours(fuel_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Combine all fuel color masks
+            for lower, upper in fuel_color_ranges:
+                fuel_mask = cv2.inRange(hsv, lower, upper)
+                if combined_fuel_mask is None:
+                    combined_fuel_mask = fuel_mask
+                else:
+                    combined_fuel_mask = cv2.bitwise_or(combined_fuel_mask, fuel_mask)
+            
+            if combined_fuel_mask is None:
+                return []
+            
+            # Apply morphological operations to clean up the mask
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            combined_fuel_mask = cv2.morphologyEx(combined_fuel_mask, cv2.MORPH_CLOSE, kernel)
+            combined_fuel_mask = cv2.morphologyEx(combined_fuel_mask, cv2.MORPH_OPEN, kernel)
+            
+            # Find contours for fuel nodes
+            contours, _ = cv2.findContours(combined_fuel_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
             height, width = img.shape[:2]
             
             for contour in contours:
                 area = cv2.contourArea(contour)
-                if area > 50 and area < 2000:  # Filter by reasonable fuel node size
+                
+                # Filter by fuel node size (based on typical fuel node dimensions)
+                if 80 < area < 3000:  # Reasonable fuel node size range
                     x, y, w, h = cv2.boundingRect(contour)
                     
-                    # Estimate fuel value (larger nodes typically have more fuel)
-                    estimated_value = int(area / 10)  # Simple heuristic
-                    
-                    fuel_nodes.append({
-                        'x': x + w//2,
-                        'y': y + h//2,
-                        'width': w,
-                        'height': h,
-                        'area': area,
-                        'estimated_value': estimated_value
-                    })
+                    # Check aspect ratio - fuel nodes are roughly circular/square
+                    aspect_ratio = w / h if h > 0 else 0
+                    if 0.5 < aspect_ratio < 2.0:  # Not too elongated
+                        
+                        # Avoid edges of screen (likely UI elements)
+                        margin = 40
+                        if (margin < x < width - margin - w and 
+                            margin < y < height - margin - h):
+                            
+                            # Estimate fuel value based on size and brightness
+                            roi = img[y:y+h, x:x+w]
+                            avg_brightness = np.mean(roi)
+                            
+                            # Larger and brighter nodes likely have more fuel
+                            estimated_value = int((area / 20) + (avg_brightness / 10))
+                            estimated_value = max(10, min(100, estimated_value))  # Clamp to reasonable range
+                            
+                            fuel_nodes.append({
+                                'x': x + w//2,
+                                'y': y + h//2,
+                                'width': w,
+                                'height': h,
+                                'area': area,
+                                'brightness': avg_brightness,
+                                'estimated_value': estimated_value,
+                                'aspect_ratio': aspect_ratio
+                            })
             
             # Sort by estimated value (highest first)
             fuel_nodes.sort(key=lambda x: x['estimated_value'], reverse=True)
             
+            # Limit to reasonable number to avoid false positives
+            fuel_nodes = fuel_nodes[:10]
+            
             logging.info(f"Detected {len(fuel_nodes)} fuel nodes")
+            if fuel_nodes:
+                for i, node in enumerate(fuel_nodes[:3]):  # Log top 3
+                    logging.info(f"  Fuel node {i+1}: value={node['estimated_value']}, size={node['area']}, pos=({node['x']},{node['y']})")
+            
             return fuel_nodes
             
         except Exception as e:
