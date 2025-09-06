@@ -1574,6 +1574,10 @@ class TankpitBot:
     async def detect_fuel_nodes(self):
         """Detect fuel nodes on screen using improved visual analysis based on fuel image"""
         try:
+            if not self.page:
+                logging.error("No page available for fuel node detection")
+                return []
+                
             # Take screenshot for analysis
             screenshot = await self.page.screenshot()
             nparr = np.frombuffer(screenshot, np.uint8)
