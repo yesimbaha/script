@@ -1371,7 +1371,301 @@ class TankpitBot:
                 bot_state["status"] = f"error: {str(e)}"
                 await asyncio.sleep(5)
     
-    async def should_perform_screen_maintenance(self):
+    async def perform_initial_join_sequence(self):
+        """Optimized sequence when first joining the game"""
+        try:
+            logging.info("Starting initial join sequence...")
+            bot_state["status"] = "initial_join_sequence"
+            
+            # Step 1: Press "S" for radar to reveal fuel and equipment
+            logging.info("Step 1: Activating radar with S key")
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(2000)
+            
+            # Step 2: Move to fuel nodes until safety threshold
+            await self.collect_fuel_until_safe()
+            
+            # Step 3: Collect any revealed equipment
+            logging.info("Step 3: Collecting revealed equipment")
+            await self.collect_all_equipment()
+            
+            logging.info("Initial join sequence completed")
+            bot_state["status"] = "join_sequence_complete"
+            
+        except Exception as e:
+            logging.error(f"Error in initial join sequence: {e}")
+            bot_state["status"] = f"join_sequence_error: {str(e)}"
+    
+    async def execute_fuel_priority_sequence(self):
+        """Execute sequence when fuel is below refuel threshold"""
+        try:
+            bot_state["status"] = "fuel_priority_mode"
+            logging.info("Executing fuel priority sequence")
+            
+            # Press S for radar
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(1500)
+            
+            # Look for fuel nodes on current screen
+            fuel_nodes = await self.detect_fuel_nodes()
+            
+            if fuel_nodes:
+                # Collect fuel from highest value nodes first
+                await self.collect_prioritized_fuel(fuel_nodes)
+            else:
+                # No fuel on screen - use map to find fuel
+                logging.info("No fuel detected on screen, opening overview map")
+                await self.use_overview_map_for_fuel()
+                
+        except Exception as e:
+            logging.error(f"Error in fuel priority sequence: {e}")
+    
+    async def execute_safe_mode_sequence(self):
+        """Execute sequence when fuel is above safe threshold"""
+        try:
+            bot_state["status"] = "safe_mode_stationary"
+            logging.info("Executing safe mode sequence - staying stationary")
+            
+            # Deactivate shields if active
+            bot_state["shields_active"] = False
+            
+            # Press S occasionally to check for new equipment
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(1500)
+            
+            # Collect any available equipment
+            await self.collect_all_equipment()
+            
+            # Stay stationary and wait
+            await asyncio.sleep(3)
+            
+        except Exception as e:
+            logging.error(f"Error in safe mode sequence: {e}")
+    
+    async def execute_balanced_sequence(self):
+        """Execute sequence when fuel is in medium range"""
+        try:
+            bot_state["status"] = "balanced_mode"
+            logging.info("Executing balanced mode sequence")
+            
+            # Press S for radar
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(1500)
+            
+            # Press D for mines
+            await self.page.keyboard.press("d")
+            await self.page.wait_for_timeout(1000)
+            
+            # Check for fuel and collect if needed
+            fuel_nodes = await self.detect_fuel_nodes()
+            if fuel_nodes:
+                await self.collect_prioritized_fuel(fuel_nodes, limit=2)  # Limit collection
+            
+            # Collect equipment
+            await self.collect_all_equipment()
+            
+        except Exception as e:
+            logging.error(f"Error in balanced sequence: {e}")
+    
+    async def detect_fuel_nodes(self):
+        """Detect fuel nodes on screen and return sorted by value"""
+        try:
+            # Take screenshot for analysis
+            screenshot = await self.page.screenshot()
+            
+            # Use OpenCV to detect fuel node patterns
+            nparr = np.frombuffer(screenshot, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            fuel_nodes = []
+            
+            # Look for fuel node characteristics (yellow/golden colors typical of fuel)
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            
+            # Define fuel node color ranges (yellow/golden)
+            fuel_color_lower = np.array([20, 100, 100])  # Yellow lower bound
+            fuel_color_upper = np.array([30, 255, 255])  # Yellow upper bound
+            
+            fuel_mask = cv2.inRange(hsv, fuel_color_lower, fuel_color_upper)
+            
+            # Find contours that could be fuel nodes
+            contours, _ = cv2.findContours(fuel_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            height, width = img.shape[:2]
+            
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if area > 50 and area < 2000:  # Filter by reasonable fuel node size
+                    x, y, w, h = cv2.boundingRect(contour)
+                    
+                    # Estimate fuel value (larger nodes typically have more fuel)
+                    estimated_value = int(area / 10)  # Simple heuristic
+                    
+                    fuel_nodes.append({
+                        'x': x + w//2,
+                        'y': y + h//2,
+                        'width': w,
+                        'height': h,
+                        'area': area,
+                        'estimated_value': estimated_value
+                    })
+            
+            # Sort by estimated value (highest first)
+            fuel_nodes.sort(key=lambda x: x['estimated_value'], reverse=True)
+            
+            logging.info(f"Detected {len(fuel_nodes)} fuel nodes")
+            return fuel_nodes
+            
+        except Exception as e:
+            logging.error(f"Error detecting fuel nodes: {e}")
+            return []
+    
+    async def collect_prioritized_fuel(self, fuel_nodes, limit=None):
+        """Collect fuel from nodes in priority order"""
+        try:
+            collected = 0
+            max_collect = limit or len(fuel_nodes)
+            
+            for fuel_node in fuel_nodes[:max_collect]:
+                current_fuel = await self.detect_fuel_level()
+                
+                # Stop if we've reached safety threshold
+                if current_fuel >= bot_state["settings"]["safe_threshold"]:
+                    logging.info(f"Reached safety threshold ({current_fuel}%), stopping fuel collection")
+                    break
+                
+                # Click on the fuel node
+                await self.page.mouse.click(fuel_node['x'], fuel_node['y'])
+                await self.page.wait_for_timeout(1500)
+                
+                collected += 1
+                logging.info(f"Collected fuel node {collected} (estimated value: {fuel_node['estimated_value']})")
+            
+            logging.info(f"Collected fuel from {collected} nodes")
+            
+        except Exception as e:
+            logging.error(f"Error collecting prioritized fuel: {e}")
+    
+    async def collect_fuel_until_safe(self):
+        """Collect fuel until reaching safety threshold"""
+        try:
+            attempts = 0
+            max_attempts = 10
+            
+            while attempts < max_attempts:
+                current_fuel = await self.detect_fuel_level()
+                
+                if current_fuel >= bot_state["settings"]["safe_threshold"]:
+                    logging.info(f"Reached safety threshold: {current_fuel}%")
+                    break
+                
+                # Detect and collect fuel
+                fuel_nodes = await self.detect_fuel_nodes()
+                if fuel_nodes:
+                    await self.collect_prioritized_fuel(fuel_nodes, limit=3)
+                else:
+                    logging.info("No fuel nodes detected")
+                    break
+                
+                attempts += 1
+                await self.page.wait_for_timeout(2000)
+            
+        except Exception as e:
+            logging.error(f"Error collecting fuel until safe: {e}")
+    
+    async def use_overview_map_for_fuel(self):
+        """Use overview map to find fuel when none available locally"""
+        try:
+            logging.info("Opening overview map to search for fuel")
+            bot_state["status"] = "using_overview_map"
+            
+            # Press F to open overview map
+            await self.page.keyboard.press("f")
+            await self.page.wait_for_timeout(3000)
+            
+            # Take screenshot to analyze map
+            screenshot = await self.page.screenshot()
+            nparr = np.frombuffer(screenshot, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            # Look for flashing tank (bot's current position)
+            bot_position = await self.find_bot_on_overview_map(img)
+            
+            if bot_position:
+                # Click within 30 pixel radius of bot's position
+                import random
+                offset_x = random.randint(-30, 30)
+                offset_y = random.randint(-30, 30)
+                
+                target_x = bot_position['x'] + offset_x
+                target_y = bot_position['y'] + offset_y
+                
+                logging.info(f"Clicking near bot position: ({target_x}, {target_y})")
+                await self.page.mouse.click(target_x, target_y)
+                await self.page.wait_for_timeout(4000)
+                
+                # After landing, start main sequence
+                await self.execute_landing_sequence()
+            else:
+                logging.warning("Could not find bot position on overview map")
+                # Close map and continue
+                await self.page.keyboard.press("escape")
+                await self.page.wait_for_timeout(1000)
+                
+        except Exception as e:
+            logging.error(f"Error using overview map: {e}")
+    
+    async def find_bot_on_overview_map(self, img):
+        """Find the flashing bot indicator on overview map"""
+        try:
+            # Look for bright/flashing elements that could be the bot
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            
+            # Find bright spots (flashing elements)
+            _, bright_thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+            
+            contours, _ = cv2.findContours(bright_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Look for small bright spots that could be the bot indicator
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if 10 < area < 100:  # Small bright spot
+                    x, y, w, h = cv2.boundingRect(contour)
+                    return {'x': x + w//2, 'y': y + h//2}
+            
+            # Fallback: assume bot is near center of map
+            height, width = img.shape[:2]
+            return {'x': width//2, 'y': height//2}
+            
+        except Exception as e:
+            logging.error(f"Error finding bot on overview map: {e}")
+            return None
+    
+    async def execute_landing_sequence(self):
+        """Execute sequence after landing from overview map"""
+        try:
+            logging.info("Executing post-landing sequence")
+            bot_state["status"] = "post_landing_sequence"
+            
+            # Press S for radar
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(2000)
+            
+            # Press D for mines
+            await self.page.keyboard.press("d")
+            await self.page.wait_for_timeout(1500)
+            
+            # Collect fuel until threshold
+            await self.collect_fuel_until_safe()
+            
+            # Collect equipment
+            await self.collect_all_equipment()
+            
+            logging.info("Post-landing sequence completed")
+            
+        except Exception as e:
+            logging.error(f"Error in landing sequence: {e}")
+    
         """Determine if bot should perform screen maintenance based on game conditions"""
         try:
             # Check for new equipment that might have spawned
