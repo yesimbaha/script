@@ -1939,6 +1939,443 @@ class TankPitBotAPITester:
         
         return self.tests_passed == self.tests_run
 
+    def test_login_overlay_issue(self):
+        """Test the specific login overlay issue preventing tank connection"""
+        print(f"\n🔍 TESTING LOGIN OVERLAY ISSUE (Tank Connection Problem)...")
+        
+        # Test 1: Login API with realistic credentials
+        print(f"\n   Step 1: Testing login API functionality...")
+        login_data = {
+            "username": "tankpilot_user",
+            "password": "secure_password123"
+        }
+        
+        login_result = self.run_api_test(
+            "Login Overlay Issue - Login API Test",
+            "POST",
+            "bot/login",
+            expected_status=200,
+            data=login_data
+        )
+        
+        if not login_result:
+            return self.log_result(
+                "Login Overlay Issue - Overall",
+                False,
+                "Login API failed - cannot test overlay dismissal"
+            )
+        
+        # Test 2: Tank detection after login (should work if overlay is dismissed)
+        print(f"\n   Step 2: Testing tank detection after login...")
+        time.sleep(2)  # Wait for login to complete
+        
+        tank_result = self.run_api_test(
+            "Login Overlay Issue - Tank Detection After Login",
+            "GET",
+            "bot/tanks",
+            expected_status=200
+        )
+        
+        # Test 3: Tank selection (should work if no click interception)
+        print(f"\n   Step 3: Testing tank selection without click interception...")
+        time.sleep(1)
+        
+        select_result = self.run_api_test(
+            "Login Overlay Issue - Tank Selection Test",
+            "POST",
+            "bot/select-tank/0",
+            expected_status=200
+        )
+        
+        # Test 4: Check browser session stability
+        print(f"\n   Step 4: Testing browser session stability...")
+        
+        status_result = self.run_api_test(
+            "Login Overlay Issue - Browser Session Stability",
+            "GET",
+            "bot/status",
+            expected_status=200
+        )
+        
+        # Analyze results
+        if login_result and tank_result and select_result and status_result:
+            return self.log_result(
+                "Login Overlay Issue - Complete Workflow",
+                True,
+                "Login → Tank Detection → Tank Selection workflow completed successfully"
+            )
+        elif login_result and not tank_result:
+            return self.log_result(
+                "Login Overlay Issue - Tank Detection Failed",
+                False,
+                "Login succeeded but tank detection failed - possible overlay interference"
+            )
+        elif login_result and tank_result and not select_result:
+            return self.log_result(
+                "Login Overlay Issue - Tank Selection Failed",
+                False,
+                "Login and detection succeeded but selection failed - possible click interception"
+            )
+        else:
+            return self.log_result(
+                "Login Overlay Issue - Multiple Failures",
+                False,
+                f"Multiple workflow steps failed - login:{login_result}, tanks:{tank_result}, select:{select_result}"
+            )
+
+    def test_browser_session_management(self):
+        """Test browser session management after memory cleanup"""
+        print(f"\n🧠 Testing Browser Session Management After Memory Cleanup...")
+        
+        # Test 1: Check initial browser state
+        initial_status = self.run_api_test(
+            "Browser Session - Initial Status",
+            "GET",
+            "bot/status",
+            200
+        )
+        
+        if not initial_status:
+            return False
+        
+        # Test 2: Start bot to create browser session
+        print(f"\n   Creating browser session...")
+        start_result = self.run_api_test(
+            "Browser Session - Start Bot",
+            "POST",
+            "bot/start",
+            200
+        )
+        
+        if start_result:
+            time.sleep(3)  # Wait for browser startup
+            
+            # Test 3: Check if browser session is stable
+            session_status = self.run_api_test(
+                "Browser Session - Session Stability Check",
+                "GET",
+                "bot/status",
+                200
+            )
+            
+            # Test 4: Test login with active session
+            login_data = {
+                "username": "session_test_user",
+                "password": "session_test_pass"
+            }
+            
+            session_login = self.run_api_test(
+                "Browser Session - Login With Active Session",
+                "POST",
+                "bot/login",
+                expected_status=200,
+                data=login_data
+            )
+            
+            # Test 5: Stop bot to clean up
+            stop_result = self.run_api_test(
+                "Browser Session - Stop Bot Cleanup",
+                "POST",
+                "bot/stop",
+                200
+            )
+            
+            if session_status and session_login:
+                return self.log_result(
+                    "Browser Session Management",
+                    True,
+                    "Browser sessions remain stable after memory cleanup"
+                )
+            else:
+                return self.log_result(
+                    "Browser Session Management",
+                    False,
+                    "Browser session instability detected after memory cleanup"
+                )
+        
+        return False
+
+    def test_page_state_after_login(self):
+        """Test page state after login to verify proper overlay dismissal"""
+        print(f"\n📄 Testing Page State After Login...")
+        
+        # Test 1: Login to establish session
+        login_data = {
+            "username": "page_state_user",
+            "password": "page_state_pass"
+        }
+        
+        login_result = self.run_api_test(
+            "Page State - Login to Establish Session",
+            "POST",
+            "bot/login",
+            expected_status=200,
+            data=login_data
+        )
+        
+        if not login_result:
+            return self.log_result(
+                "Page State After Login",
+                False,
+                "Cannot test page state - login failed"
+            )
+        
+        # Test 2: Wait and check if tank operations work (indicates proper page state)
+        time.sleep(3)  # Wait for login to complete and overlay to dismiss
+        
+        # Test tank detection (should work if page is in correct state)
+        tank_detection = self.run_api_test(
+            "Page State - Tank Detection After Login",
+            "GET",
+            "bot/tanks",
+            expected_status=200
+        )
+        
+        # Test bot status (should show proper state)
+        status_check = self.run_api_test(
+            "Page State - Status Check After Login",
+            "GET",
+            "bot/status",
+            expected_status=200
+        )
+        
+        if tank_detection and status_check:
+            return self.log_result(
+                "Page State After Login",
+                True,
+                "Page state is correct after login - no overlay interference detected"
+            )
+        else:
+            return self.log_result(
+                "Page State After Login",
+                False,
+                "Page state issues detected - possible login overlay still present"
+            )
+
+    def test_click_interception_detection(self):
+        """Test for click interception issues in tank management"""
+        print(f"\n🖱️  Testing Click Interception Detection...")
+        
+        # Test 1: Establish login session first
+        login_data = {
+            "username": "click_test_user",
+            "password": "click_test_pass"
+        }
+        
+        login_result = self.run_api_test(
+            "Click Interception - Establish Login Session",
+            "POST",
+            "bot/login",
+            expected_status=200,
+            data=login_data
+        )
+        
+        if not login_result:
+            return self.log_result(
+                "Click Interception Detection",
+                False,
+                "Cannot test click interception - login failed"
+            )
+        
+        # Test 2: Wait for login to complete
+        time.sleep(3)
+        
+        # Test 3: Try tank selection (this would fail if clicks are intercepted)
+        select_result = self.run_api_test(
+            "Click Interception - Tank Selection Test",
+            "POST",
+            "bot/select-tank/0",
+            expected_status=200
+        )
+        
+        # Test 4: Try multiple tank operations to detect patterns
+        operations_successful = 0
+        total_operations = 3
+        
+        for i in range(total_operations):
+            time.sleep(1)
+            operation_result = self.run_api_test(
+                f"Click Interception - Operation {i+1}",
+                "GET",
+                "bot/tanks",
+                expected_status=200
+            )
+            if operation_result:
+                operations_successful += 1
+        
+        success_rate = (operations_successful / total_operations) * 100
+        
+        if select_result and success_rate >= 80:
+            return self.log_result(
+                "Click Interception Detection",
+                True,
+                f"No click interception detected - {success_rate}% operation success rate"
+            )
+        elif not select_result:
+            return self.log_result(
+                "Click Interception Detection",
+                False,
+                "Tank selection failed - possible click interception by login overlay"
+            )
+        else:
+            return self.log_result(
+                "Click Interception Detection",
+                False,
+                f"Intermittent failures detected - {success_rate}% success rate suggests click interference"
+            )
+
+    def test_complete_login_to_tank_workflow(self):
+        """Test the complete login-to-tank-selection workflow"""
+        print(f"\n🔄 Testing Complete Login-to-Tank-Selection Workflow...")
+        
+        workflow_steps = []
+        
+        # Step 1: Login
+        print(f"\n   Workflow Step 1: Login...")
+        login_data = {
+            "username": "workflow_test_user",
+            "password": "workflow_test_pass"
+        }
+        
+        login_success = self.run_api_test(
+            "Complete Workflow - Step 1: Login",
+            "POST",
+            "bot/login",
+            expected_status=200,
+            data=login_data
+        )
+        workflow_steps.append(("Login", login_success))
+        
+        if not login_success:
+            return self.log_result(
+                "Complete Login-to-Tank Workflow",
+                False,
+                "Workflow failed at Step 1: Login"
+            )
+        
+        # Step 2: Wait for overlay dismissal
+        print(f"\n   Workflow Step 2: Wait for overlay dismissal...")
+        time.sleep(4)  # Give time for login overlay to dismiss
+        
+        # Step 3: Tank detection
+        print(f"\n   Workflow Step 3: Tank detection...")
+        tank_success = self.run_api_test(
+            "Complete Workflow - Step 3: Tank Detection",
+            "GET",
+            "bot/tanks",
+            expected_status=200
+        )
+        workflow_steps.append(("Tank Detection", tank_success))
+        
+        # Step 4: Tank selection
+        print(f"\n   Workflow Step 4: Tank selection...")
+        select_success = self.run_api_test(
+            "Complete Workflow - Step 4: Tank Selection",
+            "POST",
+            "bot/select-tank/0",
+            expected_status=200
+        )
+        workflow_steps.append(("Tank Selection", select_success))
+        
+        # Step 5: Final status check
+        print(f"\n   Workflow Step 5: Final status check...")
+        final_status = self.run_api_test(
+            "Complete Workflow - Step 5: Final Status",
+            "GET",
+            "bot/status",
+            expected_status=200
+        )
+        workflow_steps.append(("Final Status", final_status))
+        
+        # Analyze workflow results
+        successful_steps = sum(1 for _, success in workflow_steps if success)
+        total_steps = len(workflow_steps)
+        success_rate = (successful_steps / total_steps) * 100
+        
+        failed_steps = [step for step, success in workflow_steps if not success]
+        
+        if success_rate == 100:
+            return self.log_result(
+                "Complete Login-to-Tank Workflow",
+                True,
+                f"All {total_steps} workflow steps completed successfully - no overlay interference"
+            )
+        elif "Tank Detection" in failed_steps or "Tank Selection" in failed_steps:
+            return self.log_result(
+                "Complete Login-to-Tank Workflow",
+                False,
+                f"Critical workflow failure - failed steps: {', '.join(failed_steps)} - likely login overlay interference"
+            )
+        else:
+            return self.log_result(
+                "Complete Login-to-Tank Workflow",
+                False,
+                f"Workflow partially failed - {success_rate}% success rate - failed steps: {', '.join(failed_steps)}"
+            )
+
+    def run_login_overlay_focused_tests(self):
+        """Run tests specifically focused on the login overlay issue"""
+        print("=" * 80)
+        print("🔥 LOGIN OVERLAY ISSUE INVESTIGATION")
+        print("=" * 80)
+        print(f"Testing against: {self.base_url}")
+        print(f"API Base URL: {self.api_url}")
+        print("Focus: Login overlay preventing tank connection")
+        print(f"Issue: '<div id='login' class='overlay'>…</div> intercepts pointer events'")
+        
+        # Test server health first
+        print("\n🏥 TESTING SERVER HEALTH...")
+        self.test_server_health()
+        
+        # Test Xvfb integration (critical for browser functionality)
+        print("\n🖥️  TESTING XVFB INTEGRATION...")
+        self.test_xvfb_integration()
+        
+        # Test Playwright browser startup
+        print("\n🌐 TESTING PLAYWRIGHT BROWSER STARTUP...")
+        self.test_playwright_browser_startup()
+        
+        # PRIORITY TESTS FOR LOGIN OVERLAY ISSUE
+        print("\n🔥 PRIORITY: LOGIN OVERLAY & TANK CONNECTION TESTS")
+        print("="*60)
+        self.test_login_overlay_issue()
+        self.test_browser_session_management()
+        self.test_page_state_after_login()
+        self.test_click_interception_detection()
+        self.test_complete_login_to_tank_workflow()
+        
+        # Additional supporting tests
+        print("\n🔐 SUPPORTING LOGIN TESTS...")
+        self.test_bot_login_comprehensive()
+        self.test_tank_detection_after_login()
+        
+        # Print focused summary
+        print("\n" + "=" * 80)
+        print("🎯 LOGIN OVERLAY INVESTIGATION SUMMARY")
+        print("=" * 80)
+        print(f"Total Tests: {self.tests_run}")
+        print(f"Passed: {self.tests_passed}")
+        print(f"Failed: {self.tests_run - self.tests_passed}")
+        print(f"Success Rate: {(self.tests_passed/self.tests_run*100):.1f}%")
+        
+        # Analyze specific failures
+        overlay_related_failures = []
+        for result in self.test_results:
+            if not result["success"] and any(keyword in result["test"].lower() for keyword in 
+                ["overlay", "tank", "click", "workflow", "session"]):
+                overlay_related_failures.append(result["test"])
+        
+        if overlay_related_failures:
+            print(f"\n❌ OVERLAY-RELATED FAILURES DETECTED:")
+            for failure in overlay_related_failures:
+                print(f"   • {failure}")
+            print(f"\n🔍 RECOMMENDATION: Login overlay is likely still intercepting clicks")
+        else:
+            print(f"\n✅ NO OVERLAY-RELATED FAILURES DETECTED")
+            print(f"🎉 Login overlay issue appears to be resolved")
+        
+        return self.tests_passed == self.tests_run
+
     def run_all_tests(self):
         """Run all API tests"""
         print("=" * 60)
