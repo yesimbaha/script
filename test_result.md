@@ -196,6 +196,19 @@ backend:
           agent: "testing"
           comment: "FINAL VERIFICATION COMPLETE (2025-09-06): Comprehensive re-testing confirms login functionality is permanently fixed and stable. ✅ Xvfb Process: Running stable on display :99 (PID 514) with 1024x768x24 resolution ✅ Environment Variable: DISPLAY=:99 correctly set in backend/.env file (permanent fix applied) ✅ Login API: Consistently returns HTTP 200 with {'success': true, 'message': 'Login successful'} in ~10s response time ✅ Browser Session Creation: Playwright successfully creates browsers with --display=:99 args, no 'Missing X server' errors ✅ Tankpit.com Integration: Backend logs show successful navigation to tankpit.com, login form interaction, and credential submission ✅ WebSocket Connection: Bot status API working correctly (HTTP 200) ✅ Stability Test: System remains stable after multiple login attempts, no Xvfb crashes ✅ Backend Logs: Show successful browser startup and tankpit.com login attempts with proper form interaction. The permanent fix via DISPLAY=:99 environment variable has completely resolved the recurring login failure issue - login functionality is now fully operational and stable."
 
+backend:
+  - task: "Fix login overlay click interception issue"
+    implemented: false
+    working: false
+    file: "/app/backend/server.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: false
+          agent: "testing"
+          comment: "CRITICAL ISSUE CONFIRMED: Comprehensive testing reveals login overlay is NOT being dismissed after successful login, causing tank connection failures. ✅ Login API: Works correctly (HTTP 200, 'Login successful') ❌ Tank Detection: Fails with timeouts after login ❌ Tank Selection: Fails with timeouts after login ❌ Complete Workflow: Only 27.3% success rate (3/11 tests passed) 🔍 ROOT CAUSE IDENTIFIED: Backend logs show '<div id=\"login\" class=\"overlay\">…</div> intercepts pointer events' - the login overlay remains visible and blocks all click interactions with tank management interface even after successful authentication. The overlay dismissal logic is not working properly. This prevents users from accessing tank selection and management features. URGENT FIX NEEDED: Login overlay must be properly dismissed/hidden after successful login to restore tank management functionality."
+
 frontend:
   - task: "Frontend fuel display updates"
     implemented: true
