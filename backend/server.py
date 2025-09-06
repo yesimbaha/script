@@ -1259,16 +1259,27 @@ class TankpitBot:
                 "shields_active": bot_state["shields_active"],
                 "position": bot_state["position"],
                 "status": bot_state["status"],
+                "current_map": bot_state.get("current_map", "none"),
                 "settings": bot_state["settings"]
             }
         }
         
         # Send to all connected WebSocket clients
+        disconnected_connections = []
         for connection in websocket_connections[:]:
             try:
                 await connection.send_text(json.dumps(status_data))
-            except:
-                websocket_connections.remove(connection)
+                logging.debug(f"Broadcasted status to WebSocket client: fuel={bot_state['current_fuel']}%, status={bot_state['status']}")
+            except Exception as e:
+                logging.warning(f"WebSocket connection failed, removing: {e}")
+                disconnected_connections.append(connection)
+        
+        # Remove failed connections
+        for conn in disconnected_connections:
+            if conn in websocket_connections:
+                websocket_connections.remove(conn)
+        
+        logging.info(f"Status broadcast to {len(websocket_connections)} clients: fuel={bot_state['current_fuel']}%, shields={bot_state['shields_active']}, status={bot_state['status']}")
     
     async def stop(self):
         """Stop the bot and cleanup"""
