@@ -31,6 +31,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [logs, setLogs] = useState([]);
   
+  // Real-time bot screen
+  const [botScreenshot, setBotScreenshot] = useState(null);
+  const [screenshotError, setScreenshotError] = useState(false);
+  
   // Settings state
   const [settings, setSettings] = useState({
     refuel_threshold: 25,
