@@ -430,6 +430,44 @@ function App() {
 
           {/* Right Panel - Status & Monitoring */}
           <div className="space-y-6">
+            {/* Real-time Bot Screen */}
+            {botStatus.running && (
+              <div className="bg-gray-800 rounded-lg p-6">
+                <h2 className="text-xl font-semibold mb-4 text-blue-300 flex items-center">
+                  <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
+                  Live Bot Screen
+                </h2>
+                <div className="bg-black rounded-lg p-2">
+                  {botScreenshot && !screenshotError ? (
+                    <img 
+                      src={botScreenshot} 
+                      alt="Live Bot Screen" 
+                      className="w-full max-w-md mx-auto rounded border border-gray-600"
+                      style={{ maxHeight: '300px', objectFit: 'contain' }}
+                    />
+                  ) : screenshotError ? (
+                    <div className="w-full h-48 flex items-center justify-center text-gray-400">
+                      <div className="text-center">
+                        <div className="text-red-400 mb-2">📷</div>
+                        <div>Screenshot unavailable</div>
+                        <div className="text-sm">Bot may not be in game</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-48 flex items-center justify-center text-gray-400">
+                      <div className="text-center">
+                        <div className="animate-spin text-2xl mb-2">⟳</div>
+                        <div>Loading bot screen...</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-400 mt-2 text-center">
+                  Updates every 2 seconds • Live view of bot's screen
+                </div>
+              </div>
+            )}
+
             {/* Bot Status */}
             <div className="bg-gray-800 rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4 text-blue-300">Bot Status</h2>
