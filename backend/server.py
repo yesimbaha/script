@@ -2519,28 +2519,25 @@ class TankpitBot:
             logging.error(f"Error in random proximity move: {e}")
     
     async def collect_fuel_until_safe(self):
-        """Collect fuel until reaching safety threshold"""
+        """Collect fuel until reaching safety threshold using persistent search"""
         try:
-            attempts = 0
-            max_attempts = 10
+            current_fuel = await self.detect_fuel_level()
             
-            while attempts < max_attempts:
-                current_fuel = await self.detect_fuel_level()
-                
-                if current_fuel >= bot_state["settings"]["safe_threshold"]:
-                    logging.info(f"Reached safety threshold: {current_fuel}%")
-                    break
-                
-                # Detect and collect fuel
-                fuel_nodes = await self.detect_fuel_nodes()
-                if fuel_nodes:
-                    await self.collect_prioritized_fuel(fuel_nodes, limit=3)
-                else:
-                    logging.info("No fuel nodes detected")
-                    break
-                
-                attempts += 1
-                await self.page.wait_for_timeout(2000)
+            if current_fuel >= bot_state["settings"]["safe_threshold"]:
+                logging.info(f"Already at safety threshold: {current_fuel}%")
+                return
+            
+            logging.info(f"Starting fuel collection until safe - current: {current_fuel}%, target: {bot_state['settings']['safe_threshold']}%")
+            
+            # Use persistent search to ensure we reach safety threshold
+            search_successful = await self.persistent_fuel_and_equipment_search()
+            
+            if search_successful:
+                final_fuel = await self.detect_fuel_level()
+                logging.info(f"Successfully reached safety threshold: {final_fuel}%")
+            else:
+                final_fuel = await self.detect_fuel_level()
+                logging.warning(f"Could not reach safety threshold, current fuel: {final_fuel}%")
             
         except Exception as e:
             logging.error(f"Error collecting fuel until safe: {e}")
