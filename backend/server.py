@@ -2225,57 +2225,53 @@ class TankpitBot:
             logging.error(f"Error in safe mode sequence: {e}")
     
     async def execute_balanced_sequence(self):
-        """Execute sequence when fuel is in medium range"""
+        """FAST balanced sequence when fuel is in medium range"""
         try:
             if not self.page:
                 logging.error("No page available for balanced sequence")
                 bot_state["status"] = "no_browser_session"
                 return
                 
-            bot_state["status"] = "balanced_mode"
-            logging.info("Executing balanced mode sequence")
+            bot_state["status"] = "fast_balanced_mode"
+            logging.info("FAST balanced mode sequence")
             
-            # Press S for radar
+            # Fast radar and mines
             await self.page.keyboard.press("s")
-            await self.page.wait_for_timeout(1500)
+            await self.page.wait_for_timeout(400)  # Reduced from 1500ms to 400ms
             
-            # Press D for mines
             await self.page.keyboard.press("d")
-            await self.page.wait_for_timeout(1000)
+            await self.page.wait_for_timeout(300)  # Reduced from 1000ms to 300ms
             
-            # Check for fuel and equipment
+            # Quick detection
             fuel_nodes = await self.detect_fuel_nodes()
             equipment_items = await self.detect_equipment_visually()
             
-            # If nothing found, use persistent search (but limited for balanced mode)
+            # Fast limited search if nothing found
             if len(fuel_nodes) == 0 and len(equipment_items) == 0:
-                logging.info("Nothing found in balanced mode - using limited persistent search")
-                # Use shorter search for balanced mode (don't be as aggressive)
-                current_fuel = await self.detect_fuel_level()
-                search_attempts = 5  # Limited search attempts in balanced mode
+                logging.info("Nothing found - fast limited search")
                 
-                for attempt in range(search_attempts):
+                for attempt in range(3):  # Reduced from 5 to 3 attempts
                     if attempt % 2 == 0:
                         await self.perform_random_proximity_move()
                     else:
                         await self.move_to_screen_edge_and_radar()
                     
-                    # Check again
+                    # Quick re-check
                     fuel_nodes = await self.detect_fuel_nodes()
                     equipment_items = await self.detect_equipment_visually()
                     
                     if len(fuel_nodes) > 0 or len(equipment_items) > 0:
                         break
             
-            # Collect what we found
+            # Fast collection
             if fuel_nodes:
-                await self.collect_fuel_from_nodes(fuel_nodes[:2])  # Limit collection in balanced mode
+                await self.fast_collect_fuel_from_nodes(fuel_nodes[:2])  # Limited for balanced mode
             
             if equipment_items:
-                await self.collect_all_equipment()
+                await self.fast_collect_equipment()
             
         except Exception as e:
-            logging.error(f"Error in balanced sequence: {e}")
+            logging.error(f"Error in fast balanced sequence: {e}")
     
     async def detect_fuel_nodes(self):
         """Detect fuel nodes on screen using improved visual analysis based on fuel image"""
