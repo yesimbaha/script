@@ -1439,6 +1439,11 @@ class TankpitBot:
     async def perform_initial_join_sequence(self):
         """Optimized sequence when first joining the game"""
         try:
+            if not self.page:
+                logging.error("No page available for initial join sequence")
+                bot_state["status"] = "no_browser_session"
+                return
+                
             logging.info("Starting initial join sequence...")
             bot_state["status"] = "initial_join_sequence"
             
