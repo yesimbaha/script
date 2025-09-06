@@ -925,12 +925,12 @@ class TankpitBot:
             return False
     
     async def perform_random_proximity_move(self):
-        """Perform a small random 15-pixel teleport to search for items"""
+        """Perform a small random 12-pixel teleport to search for items"""
         try:
             if not self.page:
                 return
                 
-            logging.info("Nothing detected - performing random proximity move")
+            logging.info("Nothing reachable - performing 12-pixel proximity search")
             bot_state["status"] = "searching_proximity"
             
             # Take screenshot to get current screen center
@@ -945,12 +945,12 @@ class TankpitBot:
             center_x = width // 2
             center_y = height // 2
             
-            # Generate random offset within 15 pixel radius
+            # Generate random offset within 12 pixel radius (reduced from 15)
             import random
             import math
             
             angle = random.uniform(0, 2 * math.pi)  # Random angle
-            distance = random.uniform(5, 15)  # Random distance 5-15 pixels
+            distance = random.uniform(5, 12)  # Random distance 5-12 pixels
             
             offset_x = int(distance * math.cos(angle))
             offset_y = int(distance * math.sin(angle))
@@ -962,7 +962,7 @@ class TankpitBot:
             target_x = max(50, min(width - 50, target_x))
             target_y = max(50, min(height - 50, target_y))
             
-            logging.info(f"Random proximity move: clicking ({target_x}, {target_y}) - offset ({offset_x}, {offset_y})")
+            logging.info(f"12-pixel proximity move: clicking ({target_x}, {target_y}) - offset ({offset_x}, {offset_y})")
             
             # Click the random nearby location
             await self.page.mouse.click(target_x, target_y)
@@ -972,10 +972,145 @@ class TankpitBot:
             await self.page.keyboard.press("s")
             await self.page.wait_for_timeout(2000)
             
-            logging.info("Random proximity move completed")
+            logging.info("12-pixel proximity move completed")
             
         except Exception as e:
-            logging.error(f"Error in random proximity move: {e}")
+            logging.error(f"Error in 12-pixel proximity move: {e}")
+    
+    async def move_to_screen_edge_and_radar(self):
+        """Move to edge of screen and radar for new area exploration"""
+        try:
+            if not self.page:
+                return
+                
+            logging.info("Moving to screen edge for new area exploration")
+            bot_state["status"] = "exploring_screen_edge"
+            
+            # Take screenshot to get screen dimensions
+            screenshot = await self.page.screenshot()
+            nparr = np.frombuffer(screenshot, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                return
+                
+            height, width = img.shape[:2]
+            
+            # Choose random edge: 0=top, 1=right, 2=bottom, 3=left
+            import random
+            edge = random.randint(0, 3)
+            margin = 30  # Stay away from very edge to avoid UI elements
+            
+            if edge == 0:  # Top edge
+                target_x = random.randint(margin, width - margin)
+                target_y = margin
+                edge_name = "top"
+            elif edge == 1:  # Right edge
+                target_x = width - margin
+                target_y = random.randint(margin, height - margin)
+                edge_name = "right"
+            elif edge == 2:  # Bottom edge
+                target_x = random.randint(margin, width - margin)
+                target_y = height - margin
+                edge_name = "bottom"
+            else:  # Left edge
+                target_x = margin
+                target_y = random.randint(margin, height - margin)
+                edge_name = "left"
+            
+            logging.info(f"Moving to {edge_name} edge at ({target_x}, {target_y})")
+            
+            # Click on the edge location
+            await self.page.mouse.click(target_x, target_y)
+            await self.page.wait_for_timeout(3000)  # Wait longer for screen transition
+            
+            # Radar the new area
+            await self.page.keyboard.press("s")
+            await self.page.wait_for_timeout(2000)
+            
+            logging.info(f"Completed {edge_name} edge exploration and radar")
+            
+        except Exception as e:
+            logging.error(f"Error in screen edge exploration: {e}")
+    
+    async def persistent_fuel_and_equipment_search(self):
+        """Never stop searching for fuel and equipment until safety threshold reached"""
+        try:
+            if not self.page:
+                return False
+                
+            current_fuel = await self.detect_fuel_level()
+            max_search_attempts = 20  # Maximum search attempts before using overview map
+            search_attempt = 0
+            
+            logging.info(f"Starting persistent search - current fuel: {current_fuel}%, target: {bot_state['settings']['safe_threshold']}%")
+            
+            while current_fuel < bot_state["settings"]["safe_threshold"] and search_attempt < max_search_attempts:
+                search_attempt += 1
+                bot_state["status"] = f"persistent_search_attempt_{search_attempt}"
+                
+                logging.info(f"Persistent search attempt {search_attempt}/{max_search_attempts}")
+                
+                # Step 1: Radar to find items
+                await self.page.keyboard.press("s")
+                await self.page.wait_for_timeout(2000)
+                
+                # Step 2: Look for fuel nodes and equipment
+                fuel_nodes = await self.detect_fuel_nodes()
+                equipment_items = await self.detect_equipment_visually()
+                
+                items_found = len(fuel_nodes) + len(equipment_items)
+                logging.info(f"Found {len(fuel_nodes)} fuel nodes and {len(equipment_items)} equipment items")
+                
+                if items_found > 0:
+                    # Collect fuel first (priority)
+                    if fuel_nodes:
+                        await self.collect_fuel_from_nodes(fuel_nodes)
+                        
+                    # Then collect equipment
+                    if equipment_items:
+                        await self.collect_all_equipment()
+                    
+                    # Check fuel level after collection
+                    current_fuel = await self.detect_fuel_level()
+                    logging.info(f"After collection - fuel: {current_fuel}%")
+                    
+                    if current_fuel >= bot_state["settings"]["safe_threshold"]:
+                        logging.info(f"Reached safety threshold: {current_fuel}% >= {bot_state['settings']['safe_threshold']}%")
+                        bot_state["status"] = "safety_threshold_reached"
+                        return True
+                        
+                else:
+                    # No items found - use search strategies
+                    if search_attempt % 3 == 0:  # Every 3rd attempt, try screen edge
+                        logging.info("No items found - trying screen edge exploration")
+                        await self.move_to_screen_edge_and_radar()
+                    else:
+                        # Check for "nothing detected" message
+                        if await self.detect_nothing_found_message():
+                            logging.info("Nothing detected message - trying 12-pixel proximity search")
+                            await self.perform_random_proximity_move()
+                        else:
+                            logging.info("No reachable items - trying 12-pixel proximity search")
+                            await self.perform_random_proximity_move()
+                
+                # Update fuel level for next iteration
+                current_fuel = await self.detect_fuel_level()
+                
+                # Brief pause between search attempts
+                await self.page.wait_for_timeout(1000)
+            
+            if search_attempt >= max_search_attempts:
+                logging.info("Max search attempts reached - using overview map for new area")
+                bot_state["status"] = "max_search_attempts_reached"
+                await self.use_overview_map_for_fuel()
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error in persistent fuel and equipment search: {e}")
+            return False
     
     async def find_and_measure_fuel_bar(self, ui_area, total_width, total_height):
         """Find the actual fuel bar and measure its black vs colored portions"""
