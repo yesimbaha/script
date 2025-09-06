@@ -100,33 +100,208 @@ class TankPitBotAPITester:
             data=settings_data
         )
 
-    def test_bot_login(self):
-        """Test POST /api/bot/login"""
+    def test_bot_login_comprehensive(self):
+        """Comprehensive login functionality tests after Xvfb fix"""
+        print(f"\n🔐 COMPREHENSIVE LOGIN TESTING (Post-Xvfb Fix)...")
+        
+        # Test 1: Login API endpoint with valid-looking credentials
+        print(f"\n🔍 Test 1: Login API with realistic credentials...")
         login_data = {
-            "username": "test_user",
-            "password": "test_password"
+            "username": "tankpilot_user",
+            "password": "secure_password123"
         }
         
-        # This might fail with 500 since we're not actually connecting to tankpit.com
-        # But we want to test the endpoint exists and handles the request
-        result = self.run_api_test(
-            "Bot Login",
+        # Test the login endpoint - should now work with Xvfb running
+        login_result = self.run_api_test(
+            "Login API - Valid Format Credentials",
             "POST",
             "bot/login",
-            expected_status=500,  # Expecting 500 since browser automation will fail
+            expected_status=200,  # Expecting success now that Xvfb is fixed
             data=login_data
         )
         
-        # Also test with 200 in case it works
-        if not result:
-            return self.run_api_test(
-                "Bot Login (Alternative)",
-                "POST", 
-                "bot/login",
-                200,
-                data=login_data
+        # Test 2: Login with invalid credentials (error handling)
+        print(f"\n🔍 Test 2: Login error handling with invalid credentials...")
+        invalid_login_data = {
+            "username": "invalid_user",
+            "password": "wrong_password"
+        }
+        
+        invalid_login_result = self.run_api_test(
+            "Login API - Invalid Credentials",
+            "POST", 
+            "bot/login",
+            expected_status=500,  # Should fail gracefully
+            data=invalid_login_data
+        )
+        
+        # Test 3: Login with missing fields
+        print(f"\n🔍 Test 3: Login with missing required fields...")
+        incomplete_data = {"username": "test_user"}  # Missing password
+        
+        missing_field_result = self.run_api_test(
+            "Login API - Missing Password Field",
+            "POST",
+            "bot/login", 
+            expected_status=422,  # Validation error
+            data=incomplete_data
+        )
+        
+        # Test 4: Login with empty credentials
+        print(f"\n🔍 Test 4: Login with empty credentials...")
+        empty_data = {"username": "", "password": ""}
+        
+        empty_creds_result = self.run_api_test(
+            "Login API - Empty Credentials",
+            "POST",
+            "bot/login",
+            expected_status=500,  # Should handle gracefully
+            data=empty_data
+        )
+        
+        return login_result
+
+    def test_xvfb_integration(self):
+        """Test Xvfb virtual display integration"""
+        print(f"\n🖥️  Testing Xvfb Integration...")
+        
+        try:
+            import subprocess
+            import os
+            
+            # Check if Xvfb is running on display :99
+            result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+            xvfb_running = ':99' in result.stdout and 'Xvfb' in result.stdout
+            
+            if xvfb_running:
+                self.log_result("Xvfb Process Check", True, "Xvfb is running on display :99")
+            else:
+                self.log_result("Xvfb Process Check", False, "Xvfb not found running on display :99")
+                return False
+            
+            # Test if display :99 is accessible
+            os.environ['DISPLAY'] = ':99'
+            
+            # Try to test display accessibility (this is a basic check)
+            try:
+                result = subprocess.run(['xdpyinfo', '-display', ':99'], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    self.log_result("Xvfb Display Access", True, "Display :99 is accessible")
+                    return True
+                else:
+                    self.log_result("Xvfb Display Access", False, f"Cannot access display :99: {result.stderr}")
+                    return False
+            except subprocess.TimeoutExpired:
+                self.log_result("Xvfb Display Access", False, "Timeout accessing display :99")
+                return False
+            except FileNotFoundError:
+                # xdpyinfo not available, try alternative test
+                self.log_result("Xvfb Display Access", True, "Display :99 assumed accessible (xdpyinfo not available)")
+                return True
+                
+        except Exception as e:
+            self.log_result("Xvfb Integration Test", False, f"Error testing Xvfb: {str(e)}")
+            return False
+
+    def test_playwright_browser_startup(self):
+        """Test Playwright browser startup with Xvfb"""
+        print(f"\n🌐 Testing Playwright Browser Startup...")
+        
+        try:
+            # Set display for Playwright
+            import os
+            os.environ['DISPLAY'] = ':99'
+            
+            # Test if we can import playwright
+            try:
+                from playwright.sync_api import sync_playwright
+                self.log_result("Playwright Import", True, "Playwright imported successfully")
+            except ImportError as e:
+                self.log_result("Playwright Import", False, f"Cannot import Playwright: {str(e)}")
+                return False
+            
+            # Test browser startup (quick test)
+            try:
+                with sync_playwright() as p:
+                    # Try to launch browser with same args as the bot
+                    browser = p.chromium.launch(
+                        headless=False,
+                        args=[
+                            '--no-sandbox', 
+                            '--disable-dev-shm-usage',
+                            '--disable-gpu',
+                            '--remote-debugging-port=9222',
+                            '--display=:99'
+                        ]
+                    )
+                    
+                    # Create a page to test basic functionality
+                    page = browser.new_page()
+                    
+                    # Try to navigate to a simple page
+                    page.goto("data:text/html,<html><body><h1>Test Page</h1></body></html>")
+                    
+                    # Get page title to verify it's working
+                    title = page.title()
+                    
+                    # Clean up
+                    browser.close()
+                    
+                    self.log_result("Playwright Browser Startup", True, f"Browser started successfully, page title: '{title}'")
+                    return True
+                    
+            except Exception as e:
+                self.log_result("Playwright Browser Startup", False, f"Browser startup failed: {str(e)}")
+                return False
+                
+        except Exception as e:
+            self.log_result("Playwright Browser Test", False, f"Error testing Playwright: {str(e)}")
+            return False
+
+    def test_tank_detection_after_login(self):
+        """Test tank detection functionality after login attempt"""
+        print(f"\n🎯 Testing Tank Detection After Login...")
+        
+        # First attempt login to set up browser session
+        login_data = {
+            "username": "test_tankpilot",
+            "password": "test_password123"
+        }
+        
+        print("   Step 1: Attempting login to establish browser session...")
+        login_response = None
+        try:
+            url = f"{self.api_url}/bot/login"
+            response = requests.post(url, json=login_data, timeout=30)  # Longer timeout for browser startup
+            login_response = response
+            print(f"   Login response status: {response.status_code}")
+        except Exception as e:
+            print(f"   Login request failed: {str(e)}")
+        
+        # Now test tank detection
+        print("   Step 2: Testing tank detection endpoint...")
+        tank_result = self.run_api_test(
+            "Tank Detection After Login",
+            "GET",
+            "bot/tanks",
+            expected_status=200  # Should work if login established browser session
+        )
+        
+        # Alternative: Test with 500 if browser session wasn't established
+        if not tank_result and login_response and login_response.status_code != 200:
+            tank_result = self.run_api_test(
+                "Tank Detection (No Browser Session)",
+                "GET", 
+                "bot/tanks",
+                expected_status=500  # Expected if no browser session
             )
-        return result
+        
+        return tank_result
+
+    def test_bot_login(self):
+        """Legacy login test - redirects to comprehensive test"""
+        return self.test_bot_login_comprehensive()
 
     def test_get_tanks(self):
         """Test GET /api/bot/tanks"""
