@@ -1260,6 +1260,58 @@ class TankPitBotAPITester:
                 f"Error testing WebSocket endpoint: {str(e)}"
             )
 
+    def run_simplified_fuel_detection_tests(self):
+        """Run focused tests for the simplified fuel detection system"""
+        print("=" * 60)
+        print("🔥 SIMPLIFIED FUEL DETECTION TESTING")
+        print("=" * 60)
+        print(f"Testing against: {self.base_url}")
+        print(f"API Base URL: {self.api_url}")
+        print("Focus: Testing new simplified fuel detection - black vs colored pixels")
+        
+        # Test server health first
+        print("\n🏥 TESTING SERVER HEALTH...")
+        self.test_server_health()
+        
+        # Test 1: Simplified fuel detection system
+        print("\n🔥 TESTING SIMPLIFIED FUEL DETECTION SYSTEM...")
+        simplified_result = self.test_simplified_fuel_detection_system()
+        
+        # Test 2: OpenCV fuel detection operations
+        print("\n🖼️  TESTING OPENCV FUEL DETECTION OPERATIONS...")
+        opencv_result = self.test_opencv_fuel_detection_operations()
+        
+        # Test 3: Fuel detection API integration
+        print("\n🔌 TESTING FUEL DETECTION API INTEGRATION...")
+        api_result = self.test_fuel_detection_api_integration()
+        
+        # Test 4: Enhanced fuel detection methods (existing)
+        print("\n⛽ TESTING ENHANCED FUEL DETECTION METHODS...")
+        enhanced_result = self.test_enhanced_fuel_detection_methods()
+        
+        # Test 5: Page validation for fuel detection
+        print("\n🔍 TESTING PAGE VALIDATION FOR FUEL DETECTION...")
+        page_validation_result = self.test_page_validation_error_handling()
+        
+        # Print focused summary
+        print("\n" + "=" * 60)
+        print("🎯 SIMPLIFIED FUEL DETECTION TEST SUMMARY")
+        print("=" * 60)
+        print(f"Total Tests: {self.tests_run}")
+        print(f"Passed: {self.tests_passed}")
+        print(f"Failed: {self.tests_run - self.tests_passed}")
+        print(f"Success Rate: {(self.tests_passed/self.tests_run*100):.1f}%")
+        
+        # Key results
+        print(f"\n🔑 KEY FUEL DETECTION RESULTS:")
+        print(f"   • Simplified Fuel Detection System: {'✅ PASS' if simplified_result else '❌ FAIL'}")
+        print(f"   • OpenCV Fuel Operations: {'✅ PASS' if opencv_result else '❌ FAIL'}")
+        print(f"   • Fuel Detection API Integration: {'✅ PASS' if api_result else '❌ FAIL'}")
+        print(f"   • Enhanced Fuel Detection Methods: {'✅ PASS' if enhanced_result else '❌ FAIL'}")
+        print(f"   • Page Validation Handling: {'✅ PASS' if page_validation_result else '❌ FAIL'}")
+        
+        return self.tests_passed == self.tests_run
+
     def run_bot_tracking_bug_fix_tests(self):
         """Run focused tests for the bot tracking bug fixes"""
         print("=" * 60)
