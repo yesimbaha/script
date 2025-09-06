@@ -183,7 +183,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Improve fuel detection algorithm"
+    - "Enhanced bot sequence logic and improved detection systems"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
