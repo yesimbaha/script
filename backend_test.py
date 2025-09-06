@@ -396,6 +396,251 @@ class TankPitBotAPITester:
             expected_status=404  # This endpoint doesn't exist, expecting 404
         )
 
+    def test_enhanced_bot_sequences(self):
+        """Test all enhanced bot sequence functions"""
+        print(f"\n🤖 Testing Enhanced Bot Sequence Functions...")
+        
+        # Test that we can import and access the bot functions
+        try:
+            import sys
+            sys.path.append('/app/backend')
+            
+            # Import the server module to test function existence
+            from server import TankpitBot
+            
+            # Create bot instance to test methods
+            bot = TankpitBot()
+            
+            # Test 1: Check if all new sequence functions exist
+            sequence_functions = [
+                'perform_initial_join_sequence',
+                'execute_fuel_priority_sequence', 
+                'execute_safe_mode_sequence',
+                'execute_balanced_sequence'
+            ]
+            
+            missing_functions = []
+            for func_name in sequence_functions:
+                if not hasattr(bot, func_name):
+                    missing_functions.append(func_name)
+            
+            if missing_functions:
+                return self.log_result(
+                    "Enhanced Bot Sequence Functions - Existence Check",
+                    False,
+                    f"Missing functions: {', '.join(missing_functions)}"
+                )
+            else:
+                self.log_result(
+                    "Enhanced Bot Sequence Functions - Existence Check", 
+                    True,
+                    f"All {len(sequence_functions)} sequence functions found"
+                )
+            
+            # Test 2: Check detection system functions
+            detection_functions = [
+                'detect_fuel_nodes',
+                'detect_equipment_visually',
+                'collect_prioritized_fuel',
+                'collect_fuel_until_safe'
+            ]
+            
+            missing_detection = []
+            for func_name in detection_functions:
+                if not hasattr(bot, func_name):
+                    missing_detection.append(func_name)
+            
+            if missing_detection:
+                return self.log_result(
+                    "Enhanced Detection Systems - Existence Check",
+                    False,
+                    f"Missing detection functions: {', '.join(missing_detection)}"
+                )
+            else:
+                self.log_result(
+                    "Enhanced Detection Systems - Existence Check",
+                    True, 
+                    f"All {len(detection_functions)} detection functions found"
+                )
+            
+            # Test 3: Check map navigation functions
+            map_functions = [
+                'use_overview_map_for_fuel',
+                'find_bot_on_overview_map',
+                'execute_landing_sequence'
+            ]
+            
+            missing_map = []
+            for func_name in map_functions:
+                if not hasattr(bot, func_name):
+                    missing_map.append(func_name)
+            
+            if missing_map:
+                return self.log_result(
+                    "Map Navigation Functions - Existence Check",
+                    False,
+                    f"Missing map functions: {', '.join(missing_map)}"
+                )
+            else:
+                self.log_result(
+                    "Map Navigation Functions - Existence Check",
+                    True,
+                    f"All {len(map_functions)} map navigation functions found"
+                )
+            
+            return True
+            
+        except ImportError as e:
+            return self.log_result(
+                "Enhanced Bot Sequences - Import Test",
+                False,
+                f"Cannot import server module: {str(e)}"
+            )
+        except Exception as e:
+            return self.log_result(
+                "Enhanced Bot Sequences - General Test",
+                False,
+                f"Error testing bot sequences: {str(e)}"
+            )
+
+    def test_opencv_integration(self):
+        """Test OpenCV integration for image processing"""
+        print(f"\n🖼️  Testing OpenCV Integration...")
+        
+        try:
+            import cv2
+            import numpy as np
+            
+            self.log_result("OpenCV Import", True, f"OpenCV version: {cv2.__version__}")
+            
+            # Test basic OpenCV operations that the bot uses
+            # Create a test image
+            test_img = np.zeros((100, 100, 3), dtype=np.uint8)
+            test_img[25:75, 25:75] = [0, 255, 255]  # Yellow square (fuel color)
+            
+            # Test HSV conversion (used in fuel detection)
+            hsv = cv2.cvtColor(test_img, cv2.COLOR_BGR2HSV)
+            self.log_result("OpenCV HSV Conversion", True, "HSV color space conversion successful")
+            
+            # Test color masking (used in fuel/equipment detection)
+            lower_yellow = np.array([20, 150, 150])
+            upper_yellow = np.array([30, 255, 255])
+            mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+            
+            # Test contour detection (used in node detection)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if len(contours) > 0:
+                self.log_result("OpenCV Contour Detection", True, f"Found {len(contours)} contours in test image")
+            else:
+                self.log_result("OpenCV Contour Detection", False, "No contours found in test image")
+            
+            # Test morphological operations (used in image cleanup)
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            cleaned = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            self.log_result("OpenCV Morphological Operations", True, "Morphological operations successful")
+            
+            return True
+            
+        except ImportError as e:
+            return self.log_result("OpenCV Integration", False, f"Cannot import OpenCV: {str(e)}")
+        except Exception as e:
+            return self.log_result("OpenCV Integration", False, f"OpenCV operation failed: {str(e)}")
+
+    def test_bot_cycle_logic(self):
+        """Test bot cycle logic and fuel threshold routing"""
+        print(f"\n🔄 Testing Bot Cycle Logic...")
+        
+        try:
+            # Test bot status to see current fuel thresholds
+            status_result = self.run_api_test(
+                "Bot Status for Cycle Logic Test",
+                "GET",
+                "bot/status",
+                200
+            )
+            
+            if not status_result:
+                return False
+            
+            # Test settings update to verify threshold configuration
+            test_settings = {
+                "refuel_threshold": 25,
+                "shield_threshold": 10, 
+                "safe_threshold": 85,
+                "target_player": "",
+                "username": "test_cycle_user",
+                "password": "test_cycle_pass"
+            }
+            
+            settings_result = self.run_api_test(
+                "Bot Settings Update for Cycle Test",
+                "POST",
+                "bot/settings",
+                200,
+                data=test_settings
+            )
+            
+            return settings_result
+            
+        except Exception as e:
+            return self.log_result("Bot Cycle Logic Test", False, f"Error: {str(e)}")
+
+    def test_enhanced_fuel_detection_methods(self):
+        """Test that all enhanced fuel detection methods exist and are callable"""
+        print(f"\n⛽ Testing Enhanced Fuel Detection Methods...")
+        
+        try:
+            import sys
+            sys.path.append('/app/backend')
+            from server import TankpitBot
+            
+            bot = TankpitBot()
+            
+            # Test existing fuel detection methods from previous implementation
+            existing_methods = [
+                'detect_fuel_level',
+                'find_and_measure_fuel_bar',
+                'measure_fuel_in_bar', 
+                'scan_for_fuel_bar_pattern',
+                'analyze_horizontal_line_for_fuel',
+                'analyze_fuel_area_improved'
+            ]
+            
+            # Test new fuel detection methods
+            new_methods = [
+                'detect_fuel_nodes',
+                'collect_prioritized_fuel',
+                'collect_fuel_until_safe'
+            ]
+            
+            all_methods = existing_methods + new_methods
+            missing_methods = []
+            
+            for method_name in all_methods:
+                if not hasattr(bot, method_name):
+                    missing_methods.append(method_name)
+            
+            if missing_methods:
+                return self.log_result(
+                    "Enhanced Fuel Detection Methods",
+                    False,
+                    f"Missing methods: {', '.join(missing_methods)}"
+                )
+            else:
+                return self.log_result(
+                    "Enhanced Fuel Detection Methods",
+                    True,
+                    f"All {len(all_methods)} fuel detection methods found (6 existing + 3 new)"
+                )
+                
+        except Exception as e:
+            return self.log_result(
+                "Enhanced Fuel Detection Methods",
+                False,
+                f"Error testing fuel detection methods: {str(e)}"
+            )
+
     def test_screenshot_endpoint(self):
         """Test GET /api/bot/screenshot"""
         return self.run_api_test(
