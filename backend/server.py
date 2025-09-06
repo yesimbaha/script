@@ -1236,7 +1236,7 @@ class TankpitBot:
             return False
     
     async def run_bot_cycle(self):
-        """Main bot logic cycle"""
+        """Main bot logic cycle with comprehensive equipment maintenance"""
         # First, make sure we're in the game
         if not await self.enter_game():
             logging.error("Failed to enter game, stopping bot")
@@ -1246,6 +1246,9 @@ class TankpitBot:
             
         bot_state["status"] = "entered_game"
         logging.info("Bot successfully entered the game")
+        
+        # Perform initial screen entry sequence
+        await self.perform_screen_entry_sequence()
         
         while self.running:
             try:
@@ -1262,34 +1265,96 @@ class TankpitBot:
                     bot_state["shields_active"] = True
                     bot_state["status"] = "shields_activated"
                 
-                # Check if refueling needed (25% threshold)
-                if current_fuel <= bot_state["settings"]["refuel_threshold"]:
-                    bot_state["status"] = "refueling"
+                # Check if we need to perform screen maintenance
+                # This is the core equipment maintenance logic
+                if current_fuel <= bot_state["settings"]["refuel_threshold"] or await self.should_perform_screen_maintenance():
+                    logging.info("Performing screen maintenance cycle")
+                    bot_state["status"] = "screen_maintenance"
                     
-                    # Try to click fuel canister
-                    if await self.click_fuel_canister():
-                        bot_state["status"] = "fuel_collected"
-                    else:
-                        # No fuel canisters available, check map
-                        bot_state["status"] = "searching_map"
-                        await self.open_map()
-                        await self.find_dense_fuel_area()
+                    # Perform complete screen entry sequence
+                    await self.perform_screen_entry_sequence()
+                    
+                    # After maintenance, check if we need to move to new screen for more resources
+                    current_fuel = await self.detect_fuel_level()
+                    if current_fuel <= bot_state["settings"]["refuel_threshold"]:
+                        # No fuel available on current screen, need to move
+                        bot_state["status"] = "searching_new_area"
+                        if await self.navigate_to_new_area():
+                            # Perform screen entry sequence on new area
+                            await self.perform_screen_entry_sequence()
                 
-                # If fuel is above safe threshold (85%), stay stationary
+                # If fuel is above safe threshold (85%), maintain position but stay alert
                 elif current_fuel >= bot_state["settings"]["safe_threshold"]:
-                    bot_state["status"] = "stationary"
+                    bot_state["status"] = "stationary_maintaining"
                     bot_state["shields_active"] = False
+                    
+                    # Even when stationary, occasionally check for new equipment
+                    # This simulates staying alert for new spawns
+                    await self.collect_all_equipment()
                 
-                # On new screen, activate bot and mine
-                await self.activate_bot_and_mine()
-                
-                # Wait before next cycle
-                await asyncio.sleep(2)
+                # Wait before next cycle - reduced for more responsive equipment collection
+                await asyncio.sleep(3)
                 
             except Exception as e:
                 logging.error(f"Bot cycle error: {e}")
                 bot_state["status"] = f"error: {str(e)}"
                 await asyncio.sleep(5)
+    
+    async def should_perform_screen_maintenance(self):
+        """Determine if bot should perform screen maintenance based on game conditions"""
+        try:
+            # Check for new equipment that might have spawned
+            equipment_selectors = ['.equipment', '.item', '[class*="equipment"]', '[class*="item"]']
+            
+            for selector in equipment_selectors:
+                equipment_elements = await self.page.query_selector_all(selector)
+                visible_equipment = 0
+                
+                for equipment in equipment_elements:
+                    if await equipment.is_visible():
+                        visible_equipment += 1
+                        
+                # If there's equipment available, we should maintain the screen
+                if visible_equipment > 0:
+                    logging.info(f"Found {visible_equipment} equipment items, triggering maintenance")
+                    return True
+                    
+            # Also trigger maintenance periodically (every 30 seconds) to stay competitive
+            import time
+            current_time = time.time()
+            last_maintenance = getattr(self, 'last_maintenance_time', 0)
+            
+            if current_time - last_maintenance > 30:  # 30 seconds
+                self.last_maintenance_time = current_time
+                logging.info("Periodic maintenance due")
+                return True
+                
+            return False
+            
+        except Exception as e:
+            logging.error(f"Error checking screen maintenance needs: {e}")
+            return False
+    
+    async def navigate_to_new_area(self):
+        """Navigate to a new area when current area has no more resources"""
+        try:
+            bot_state["status"] = "navigating_to_new_area"
+            
+            # Use the map to find a new area with resources
+            await self.open_map()
+            await self.page.wait_for_timeout(2000)
+            
+            # Find and click on a fuel-dense area
+            if await self.find_dense_fuel_area():
+                logging.info("Successfully navigated to new area")
+                return True
+            else:
+                logging.warning("Could not find new area with resources")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Error navigating to new area: {e}")
+            return False
     
     async def broadcast_status(self):
         """Broadcast current status to all WebSocket connections"""
