@@ -1871,6 +1871,11 @@ class TankpitBot:
             await self.page.keyboard.press("s")
             await self.page.wait_for_timeout(1500)
             
+            # Check if "nothing detected here" message appears
+            if await self.detect_nothing_found_message():
+                logging.info("Nothing detected in balanced mode - trying proximity search")
+                await self.perform_random_proximity_move()
+            
             # Press D for mines
             await self.page.keyboard.press("d")
             await self.page.wait_for_timeout(1000)
@@ -1878,7 +1883,7 @@ class TankpitBot:
             # Check for fuel and collect if needed
             fuel_nodes = await self.detect_fuel_nodes()
             if fuel_nodes:
-                await self.collect_prioritized_fuel(fuel_nodes, limit=2)  # Limit collection
+                await self.collect_fuel_from_nodes(fuel_nodes[:2])  # Limit collection
             
             # Collect equipment
             await self.collect_all_equipment()
