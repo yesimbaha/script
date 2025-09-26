@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
 
 function App() {
@@ -55,40 +55,60 @@ function App() {
     const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
     
     const connectWebSocket = () => {
-      wsRef.current = new WebSocket(`${wsUrl}/api/ws/bot-status`);
-      
-      wsRef.current.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'status_update') {
-          setBotStatus(data.data);
-          addLog(`Status: ${data.data.status} | Fuel: ${data.data.current_fuel}%`);
-        } else if (data.type === 'ping') {
-          // Handle ping - connection is alive
-          console.log('WebSocket ping received');
-        }
-      };
+      try {
+        wsRef.current = new WebSocket(`${wsUrl}/api/ws/bot-status`);
+        
+        wsRef.current.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'status_update') {
+              setBotStatus(data.data);
+              addLog(`Status: ${data.data.status} | Fuel: ${data.data.current_fuel}%`);
+            } else if (data.type === 'ping') {
+              // Handle ping - connection is alive
+              console.log('WebSocket ping received');
+            }
+          } catch (err) {
+            console.error('Error parsing WebSocket message:', err);
+          }
+        };
 
-      wsRef.current.onopen = () => {
-        addLog('Connected to bot status feed');
-      };
+        wsRef.current.onopen = () => {
+          addLog('Connected to bot status feed');
+        };
 
-      wsRef.current.onclose = () => {
-        addLog('Disconnected from bot status feed - attempting reconnect...');
-        // Reconnect after 5 seconds
+        wsRef.current.onclose = () => {
+          addLog('Disconnected from bot status feed - attempting reconnect...');
+          // Reconnect after 5 seconds
+          setTimeout(connectWebSocket, 5000);
+        };
+
+        wsRef.current.onerror = (error) => {
+          addLog('WebSocket error - connection lost');
+          console.error('WebSocket error:', error);
+          // Don't let WebSocket errors crash the app
+        };
+      } catch (err) {
+        console.error('Failed to establish WebSocket connection:', err);
+        // Schedule retry
         setTimeout(connectWebSocket, 5000);
-      };
-
-      wsRef.current.onerror = (error) => {
-        addLog('WebSocket error - connection lost');
-        console.error('WebSocket error:', error);
-      };
+      }
     };
 
-    connectWebSocket();
+    // Try to connect, but don't let connection failures break the app
+    try {
+      connectWebSocket();
+    } catch (err) {
+      console.error('WebSocket connection error:', err);
+    }
 
     return () => {
       if (wsRef.current) {
-        wsRef.current.close();
+        try {
+          wsRef.current.close();
+        } catch (err) {
+          console.error('Error closing WebSocket:', err);
+        }
       }
     };
   }, []);
